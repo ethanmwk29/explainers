@@ -100,6 +100,7 @@ p { margin: 0 0 1em; }
 .back:hover { text-decoration: underline; }
 
 code, .mono { font-family: var(--mono); font-size: 0.9em; }
+pre { tab-size: 4; }
 code { background: var(--surface-2); padding: 0.1em 0.35em; border-radius: 5px; }
 
 button {

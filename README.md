@@ -9,10 +9,14 @@ Small, interactive explainers, served with GitHub Pages at https://ethanmwk29.gi
 
 **Data Structures & Algorithms**
 - [Union Find](https://ethanmwk29.github.io/explainers/data-structures-algorithms/union-find/): parent pointers, union by size, and path compression.
-- [Tarjan's SCC algorithm](https://ethanmwk29.github.io/explainers/data-structures-algorithms/tarjan-scc/): a step-by-step visualizer for finding strongly connected components.
-- [Strong bridges and dominators](https://ethanmwk29.github.io/explainers/data-structures-algorithms/strong-bridges/): the edges that hold a strongly connected graph together.
+- [BFS and DFS](https://ethanmwk29.github.io/explainers/data-structures-algorithms/bfs-dfs/): exploring graphs, grids, and bipartite checks.
+- [Topological sort](https://ethanmwk29.github.io/explainers/data-structures-algorithms/topological-sort/): Kahn's algorithm and the DFS method.
+- [Cycle detection cheat sheet](https://ethanmwk29.github.io/explainers/data-structures-algorithms/cycle-detection/): which technique for which graph.
 - [Which edges can you remove?](https://ethanmwk29.github.io/explainers/data-structures-algorithms/bridges/): bridges, spanning trees, and one-at-a-time vs. all-at-once removal.
 - [Minimum spanning trees](https://ethanmwk29.github.io/explainers/data-structures-algorithms/mst/): the cut property, Kruskal and Prim.
+- [Tarjan's SCC algorithm](https://ethanmwk29.github.io/explainers/data-structures-algorithms/tarjan-scc/): a step-by-step visualizer for finding strongly connected components.
+- [Strong bridges and dominators](https://ethanmwk29.github.io/explainers/data-structures-algorithms/strong-bridges/): the edges that hold a strongly connected graph together.
+- [Shortest paths](https://ethanmwk29.github.io/explainers/data-structures-algorithms/shortest-paths/): BFS, Dijkstra and Bellman–Ford.
 
 Code examples on the explainer pages are written in Go.
 

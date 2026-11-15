@@ -33,6 +33,24 @@
         "group": "Data structures"
       },
       {
+        "slug": "bfs-dfs",
+        "title": "BFS and DFS",
+        "blurb": "The two ways to explore a graph, step by step, plus shortest paths on grids and checking whether a graph is bipartite.",
+        "group": "Graphs: foundations"
+      },
+      {
+        "slug": "topological-sort",
+        "title": "Topological sort",
+        "blurb": "Order tasks so every dependency comes first, with Kahn's algorithm and DFS, and how both detect cycles.",
+        "group": "Graphs: foundations"
+      },
+      {
+        "slug": "cycle-detection",
+        "title": "Cycle detection cheat sheet",
+        "blurb": "Which technique to use for undirected and directed graphs, how each works, and the mistakes to avoid.",
+        "group": "Graphs: foundations"
+      },
+      {
         "slug": "bridges",
         "title": "Which edges can you remove?",
         "blurb": "Bridges, spanning trees, and the difference between removing edges one at a time and all at once.",
@@ -55,6 +73,12 @@
         "title": "Strong bridges and dominators",
         "blurb": "Which edges hold a strongly connected graph together, why Tarjan's algorithm can't tell you, and how dominators can.",
         "group": "Graphs: directed"
+      },
+      {
+        "slug": "shortest-paths",
+        "title": "Shortest paths",
+        "blurb": "BFS, Dijkstra and Bellman–Ford: which to use when, step by step, and what negative edges break.",
+        "group": "Graphs: shortest paths"
       }
     ]
   },

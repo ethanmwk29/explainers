@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cycle Detection</title>
+  <meta name="description" content="A cheat sheet for detecting cycles in graphs: which technique to use for undirected and directed graphs, how each works, and the mistakes to avoid.">
+  <link rel="stylesheet" href="../../style.css?v=6">
+  <script src="../../theme.js"></script>
+  <style>
+    .cheat { border-collapse: collapse; width: 100%; font-size: 0.93rem; margin: 0.8em 0 1.4em; }
+    .cheat th, .cheat td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+    .cheat thead th { color: var(--muted); font-weight: 600; font-size: 0.82rem; }
+    .cheat td:first-child { white-space: nowrap; font-weight: 600; }
+    .cheat .kind { white-space: nowrap; display: inline-block; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); }
+    @media (max-width: 640px) {
+      .cheat thead { display: none; }
+      .cheat tr { display: block; padding: 10px 0; border-bottom: 1px solid var(--border); }
+      .cheat td { display: block; border: none; padding: 2px 0; white-space: normal !important; }
+    }
+
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 20px; margin: 16px 0; }
+    .card h3 { margin: 0 0 6px; font-size: 1.15rem; display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; }
+    .card h3 .kind { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); }
+    .card p { margin: 0 0 8px; }
+    .card dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 8px 0 10px; font-size: 0.95rem; }
+    .card dt { color: var(--muted); font-weight: 600; }
+    .card dd { margin: 0; }
+    @media (max-width: 560px) { .card dl { grid-template-columns: 1fr; } .card dt { margin-top: 6px; } }
+    pre.snippet { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; margin: 6px 0 0; }
+    pre.snippet code { background: none; padding: 0; }
+    details.code summary { cursor: pointer; color: var(--accent); font-size: 0.92rem; margin-top: 4px; }
+
+    figure.mini { margin: 1.2em 0; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; }
+    figure.mini svg { display: block; width: 100%; max-width: 640px; height: auto; margin: 0 auto; }
+    figure.mini figcaption { font-size: 0.92rem; color: var(--muted); margin-top: 8px; }
+    .mini text { font-family: var(--sans); }
+    .rules { padding-left: 1.2em; }
+    .rules li { margin-bottom: 0.55em; }
+  </style>
+</head>
+<body>
+  <main>
+    <nav class="crumbs"><a href="../../">Explainers</a><span>/</span><a href="../">Data Structures &amp; Algorithms</a></nav>
+    <h1>Cycle detection</h1>
+    <p class="lede">A cheat sheet. Does this graph contain a cycle? The right technique depends on whether edges have a direction, how the graph is given to you, and what else you need from the answer.</p>
+
+    <h2>Which technique?</h2>
+    <table class="cheat">
+      <thead><tr><th scope="col">Technique</th><th scope="col">Graph</th><th scope="col">Reach for it when…</th><th scope="col">Cost</th></tr></thead>
+      <tbody>
+        <tr><td><a href="#union-find">Union find</a></td><td><span class="kind">undirected</span></td><td>Edges come as a list, or arrive one at a time; you want the first edge that closes a cycle</td><td>~O(E)</td></tr>
+        <tr><td><a href="#undirected-dfs">DFS, skip the way back</a></td><td><span class="kind">undirected</span></td><td>You have an adjacency list, or want to find the cycle itself</td><td>O(V + E)</td></tr>
+        <tr><td><a href="#counting">Count edges</a></td><td><span class="kind">undirected</span></td><td>You only need yes or no, and know the number of components</td><td>O(V + E)</td></tr>
+        <tr><td><a href="#three-color">Three-color DFS</a></td><td><span class="kind">directed</span></td><td>The default for directed graphs; can also return the cycle</td><td>O(V + E)</td></tr>
+        <tr><td><a href="#kahn">Kahn's algorithm</a></td><td><span class="kind">directed</span></td><td>You also want a topological order, or need to avoid recursion</td><td>O(V + E)</td></tr>
+        <tr><td><a href="#scc">Strongly connected components</a></td><td><span class="kind">directed</span></td><td>You need <em>every</em> group of vertices that lie on cycles together</td><td>O(V + E)</td></tr>
+        <tr><td><a href="#floyd">Tortoise and hare</a></td><td><span class="kind">one edge out</span></td><td>Each vertex has at most one outgoing edge (linked lists, "next" arrays); O(1) extra space</td><td>O(length)</td></tr>
+      </tbody>
+    </table>
+    <p>The deep reason undirected and directed graphs need different tools: in an undirected graph, any edge between two vertices you can already reach from each other closes a cycle. In a directed graph, an edge to an already-visited vertex only closes a cycle if you can get from that vertex <em>back</em> to where you are.</p>
+
+    <h2>Undirected graphs</h2>
+
+    <div class="card" id="union-find">
+      <h3>Union find <span class="kind">undirected</span></h3>
+      <p>Process edges one by one. If an edge's two endpoints already have the same root, they're already connected, so this edge closes a cycle. Otherwise, union them.</p>
+      <dl><dt>Gives you</dt><dd>The first edge that closes a cycle, as edges arrive. Works without building an adjacency list.</dd>
+        <dt>Watch out</dt><dd>It tells you <em>that</em> a cycle exists, not which vertices are on it.</dd>
+        <dt>More</dt><dd><a href="../union-find/">Union Find explainer</a></dd></dl>
+      <details class="code"><summary>Go code</summary><pre class="snippet"><code>// CycleUnionFind reports whether an undirected graph has a cycle: an edge
+// whose endpoints are already connected closes one.
+func CycleUnionFind(n int, edges [][2]int) bool {
+	parent := make([]int, n)
+	for i := range parent {
+		parent[i] = i
+	}
+	var find func(int) int
+	find = func(x int) int {
+		if parent[x] != x {
+			parent[x] = find(parent[x])
+		}
+		return parent[x]
+	}
+	for _, e := range edges {
+		a, b := find(e[0]), find(e[1])
+		if a == b {
+			return true
+		}
+		parent[a] = b
+	}
+	return false
+}</code></pre></details>
+    </div>
+
+    <div class="card" id="undirected-dfs">
+      <h3>DFS, skipping the edge you arrived on <span class="kind">undirected</span></h3>
+      <p>Run a DFS. Every edge you meet either leads to a new vertex or to one you've already visited. An edge to an already-visited vertex closes a cycle, <em>except</em> the edge you just arrived along, which would trivially lead back to your parent.</p>
+      <dl><dt>Gives you</dt><dd>The cycle itself, if you keep parent pointers: when you find the closing edge, walk parents from one end back to the other.</dd>
+        <dt>Watch out</dt><dd>Skip the arrival edge by its <strong>edge ID</strong>, not by "don't go back to the parent vertex". With two parallel edges between the same pair, that pair <em>is</em> a cycle, and the vertex check would miss it.</dd>
+        <dt>More</dt><dd><a href="../bfs-dfs/">BFS and DFS</a>, <a href="../bridges/">Which edges can you remove?</a> (bridges are exactly the edges on no cycle)</dd></dl>
+      <details class="code"><summary>Go code</summary><pre class="snippet"><code>// CycleUndirectedDFS does the same with a DFS. Any edge to an already
+// visited vertex closes a cycle, except the edge we arrived on. Skipping it
+// by edge ID (not by vertex) keeps duplicate edges counted as a cycle.
+func CycleUndirectedDFS(n int, edges [][2]int) bool {
+	type half struct{ to, id int }
+	adj := make([][]half, n)
+	for id, e := range edges {
+		adj[e[0]] = append(adj[e[0]], half{e[1], id})
+		adj[e[1]] = append(adj[e[1]], half{e[0], id})
+	}
+	visited := make([]bool, n)
+	var visit func(v, cameFrom int) bool
+	visit = func(v, cameFrom int) bool {
+		visited[v] = true
+		for _, h := range adj[v] {
+			if h.id == cameFrom {
+				continue
+			}
+			if visited[h.to] || visit(h.to, h.id) {
+				return true
+			}
+		}
+		return false
+	}
+	for v := 0; v &lt; n; v++ {
+		if !visited[v] &amp;&amp; visit(v, -1) {
+			return true
+		}
+	}
+	return false
+}</code></pre></details>
+    </div>
+
+    <div class="card" id="counting">
+      <h3>Just count <span class="kind">undirected</span></h3>
+      <p>A forest (a graph with no cycles) on <code>V</code> vertices with <code>c</code> connected components has exactly <code>V − c</code> edges. So <strong>an undirected graph has a cycle exactly when <code>E &gt; V − c</code></strong>. For a connected graph: a cycle exists exactly when <code>E ≥ V</code>.</p>
+      <dl><dt>Gives you</dt><dd>A yes or no with almost no code, once you know <code>c</code> (from any BFS, DFS, or union find).</dd>
+        <dt>Classic use</dt><dd>"Is this graph a tree?" means: connected <em>and</em> exactly <code>V − 1</code> edges.</dd></dl>
+    </div>
+
+    <h2>Directed graphs</h2>
+
+    <div class="card" id="three-color">
+      <h3>Three-color DFS <span class="kind">directed</span></h3>
+      <p>Color every vertex <strong>white</strong> (unvisited), <strong>gray</strong> (on the current DFS path, still being explored) or <strong>black</strong> (finished). An edge to a <strong>gray</strong> vertex points back to an ancestor on the current path: that's a cycle. An edge to a black vertex is fine.</p>
+      <dl><dt>Gives you</dt><dd>Yes or no, or the cycle itself: when you hit a gray vertex, the cycle is the part of the current path from that vertex onward.</dd>
+        <dt>Watch out</dt><dd><strong>Two colors (just "visited") are not enough.</strong> See the diagram below. Also loop over every vertex as a starting point, since one DFS only covers what it can reach.</dd>
+        <dt>More</dt><dd><a href="../topological-sort/">Topological sort</a> (the same DFS, collecting finish order)</dd></dl>
+      <details class="code"><summary>Go code</summary><pre class="snippet"><code>// CycleDirected reports whether a directed graph has a cycle, with a
+// three-color DFS. Only an edge to a gray vertex (one on the current path)
+// closes a cycle; an edge to a black (finished) vertex doesn't.
+func CycleDirected(n int, edges [][2]int) bool {
+	adj := make([][]int, n)
+	for _, e := range edges {
+		adj[e[0]] = append(adj[e[0]], e[1])
+	}
+	const white, gray, black = 0, 1, 2
+	color := make([]int, n)
+	var visit func(v int) bool
+	visit = func(v int) bool {
+		color[v] = gray
+		for _, w := range adj[v] {
+			if color[w] == gray || (color[w] == white &amp;&amp; visit(w)) {
+				return true
+			}
+		}
+		color[v] = black
+		return false
+	}
+	for v := 0; v &lt; n; v++ {
+		if color[v] == white &amp;&amp; visit(v) {
+			return true
+		}
+	}
+	return false
+}</code></pre></details>
+    </div>
+
+    <figure class="mini">
+      <svg viewBox="0 0 640 200" role="img" aria-label="A to B, A to C, B to C. A DFS from A reaches C through B. Later, the edge A to C leads to an already visited vertex, but there is no cycle.">
+        <defs><marker id="m" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" style="fill:var(--text)"/></marker>
+          <marker id="m2" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" style="fill:var(--accent)"/></marker></defs>
+        <g style="stroke-width:2.2;fill:none">
+          <line x1="90" y1="58" x2="208" y2="58" style="stroke:var(--text)" marker-end="url(#m)"/>
+          <line x1="225" y1="78" x2="165" y2="136" style="stroke:var(--text)" marker-end="url(#m)"/>
+          <line x1="82" y1="78" x2="135" y2="136" style="stroke:var(--accent);stroke-width:3;stroke-dasharray:7 5" marker-end="url(#m2)"/>
+        </g>
+        <g style="font:700 16px var(--sans);text-anchor:middle;dominant-baseline:central;fill:var(--text)">
+          <circle cx="70" cy="58" r="19" style="fill:var(--surface);stroke:var(--text);stroke-width:2"/><text x="70" y="58">A</text>
+          <circle cx="230" cy="58" r="19" style="fill:var(--surface);stroke:var(--text);stroke-width:2"/><text x="230" y="58">B</text>
+          <circle cx="150" cy="155" r="19" style="fill:var(--surface);stroke:var(--text);stroke-width:2"/><text x="150" y="155">C</text>
+        </g>
+        <g style="font:14px var(--sans);fill:var(--text)">
+          <text x="300" y="45">1. DFS from A goes to B, then C. C finishes (black).</text>
+          <text x="300" y="75">2. Back at A, the edge A → C reaches an</text>
+          <text x="300" y="97">   already-visited vertex.</text>
+          <text x="300" y="127" style="fill:var(--warn);font-weight:700">"Visited" alone says: cycle! (wrong)</text>
+          <text x="300" y="157" style="fill:var(--ok);font-weight:700">Three colors say: C is black, not gray. No cycle.</text>
+        </g>
+      </svg>
+      <figcaption>Why directed graphs need the gray color. A vertex you finished earlier on a different branch can't lead back to you; only a vertex still on the current path can.</figcaption>
+    </figure>
+
+    <div class="card" id="kahn">
+      <h3>Kahn's algorithm <span class="kind">directed</span></h3>
+      <p>Repeatedly remove vertices with no incoming edges. If you remove all <code>V</code> of them, there's no cycle. If you get stuck with vertices left over, there is one: vertices on a cycle are each waiting on another vertex of the cycle, so they never become free.</p>
+      <dl><dt>Gives you</dt><dd>A topological order for free when there's no cycle. Iterative, so no recursion depth limits.</dd>
+        <dt>Watch out</dt><dd>The leftover vertices aren't all <em>on</em> a cycle. Some are only downstream of one. To report the cycle itself, use the three-color DFS.</dd>
+        <dt>More</dt><dd><a href="../topological-sort/">Topological sort</a> (includes the code)</dd></dl>
+    </div>
+
+    <div class="card" id="scc">
+      <h3>Strongly connected components <span class="kind">directed</span></h3>
+      <p>Every directed cycle lies inside one strongly connected component, and every component with two or more vertices contains a cycle. So: <strong>the graph has a cycle exactly when some SCC has more than one vertex, or some vertex has an edge to itself.</strong></p>
+      <dl><dt>Gives you</dt><dd>Every group of vertices that are on cycles together, in one pass, plus the condensed DAG of how the groups depend on each other.</dd>
+        <dt>Watch out</dt><dd>It's more machinery than a yes-or-no question needs. Self-loops don't make a bigger SCC, so check them separately.</dd>
+        <dt>More</dt><dd><a href="../tarjan-scc/">Tarjan's SCC algorithm</a></dd></dl>
+    </div>
+
+    <h2>Special case: one edge out per vertex</h2>
+
+    <div class="card" id="floyd">
+      <h3>Floyd's tortoise and hare <span class="kind">one edge out</span></h3>
+      <p>When each vertex has at most one outgoing edge, following edges from a start traces a single path, which either ends or eventually loops. Move one pointer one step at a time and another two steps at a time. If there's a loop, the fast pointer laps the slow one and they meet; if not, the fast pointer reaches the end.</p>
+      <dl><dt>Gives you</dt><dd>A yes or no in O(1) extra space. With one more phase (reset one pointer to the start, then move both one step at a time) they meet at the first vertex of the loop.</dd>
+        <dt>Where it shows up</dt><dd>Linked lists, "next pointer" arrays, repeatedly applying a function (<code>x → f(x)</code>), and finding a duplicate in an array of values that index into the array.</dd>
+        <dt>Alternative</dt><dd>If extra space is fine, the three colors work too, and can label every vertex on every loop in one pass.</dd></dl>
+      <details class="code"><summary>Go code</summary><pre class="snippet"><code>// CycleFromStart follows next pointers from start (next[v] == -1 means the
+// chain ends) and reports whether it loops, using Floyd's tortoise and hare
+// in O(1) extra space.
+func CycleFromStart(next []int, start int) bool {
+	slow, fast := start, start
+	for fast != -1 &amp;&amp; next[fast] != -1 {
+		slow, fast = next[slow], next[next[fast]]
+		if slow == fast {
+			return true
+		}
+	}
+	return false
+}</code></pre></details>
+    </div>
+
+    <h2>Gotchas</h2>
+    <ul class="rules">
+      <li><strong>Disconnected graphs.</strong> One search only covers what it can reach. Start a new search from every vertex not yet visited.</li>
+      <li><strong>Self-loops and duplicate edges.</strong> An edge from a vertex to itself is a cycle of length 1. Two edges between the same pair of vertices form a cycle of length 2 in an undirected graph. All the code on this page counts both; check what your problem wants.</li>
+      <li><strong>Undirected parent check by vertex vs. by edge.</strong> "Skip the parent vertex" misses duplicate edges. "Skip the edge I arrived on" handles them.</li>
+      <li><strong>"Visited" isn't enough for directed graphs.</strong> Use three colors (or a separate "on the current path" set).</li>
+      <li><strong>Recursion depth.</strong> On long paths, recursive DFS can overflow the stack. Kahn's algorithm, union find, and DFS with an explicit stack avoid it.</li>
+      <li><strong>Finding vs. detecting.</strong> Most methods stop at "yes". To report the cycle, keep parent pointers (undirected DFS) or the current path (directed DFS), and read the cycle off when you find the closing edge.</li>
+    </ul>
+
+    <aside class="interview" aria-label="Interview notes">
+      <h2>Interview notes</h2>
+      <p><b>How often it comes up:</b> <strong>High</strong>, usually inside another problem: "can all courses be finished?", "is this a valid tree?", "does this linked list loop?"</p>
+      <p><b>Be ready to:</b></p>
+      <ul><li>Pick the right tool from the table above, and say why in one sentence.</li><li>Write the three-color DFS and explain the black-vs-gray difference.</li><li>Write tortoise and hare, including the second phase that finds where the loop starts.</li></ul>
+      <p><b>Practice:</b></p>
+      <ul><li><span class="lc">LeetCode 684</span> · Redundant Connection: undirected; union find returns the closing edge.</li><li><span class="lc">LeetCode 261</span> · Graph Valid Tree: connected with exactly V − 1 edges (premium).</li><li><span class="lc">LeetCode 207</span> · Course Schedule: directed; three-color DFS or Kahn.</li><li><span class="lc">LeetCode 802</span> · Find Eventual Safe States: vertices that can't reach any cycle.</li><li><span class="lc">LeetCode 141</span> · Linked List Cycle: tortoise and hare.</li><li><span class="lc">LeetCode 142</span> · Linked List Cycle II: find where the loop starts.</li><li><span class="lc">LeetCode 287</span> · Find the Duplicate Number: tortoise and hare on an array of indexes.</li><li><span class="lc">LeetCode 2360</span> · Longest Cycle in a Graph: one edge out per vertex; measure each loop.</li></ul>
+    </aside>
+
+    <footer>Part of <a href="../">Data Structures &amp; Algorithms</a> in <a href="../../">Explainers</a>.</footer>
+  </main>
+</body>
+</html>

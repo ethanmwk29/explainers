@@ -1,0 +1,624 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BFS and DFS</title>
+  <meta name="description" content="Breadth-first and depth-first search, step by step: the two ways to explore a graph, shortest paths on grids, and checking whether a graph is bipartite.">
+  <link rel="stylesheet" href="../../style.css?v=6">
+  <script src="../../theme.js"></script>
+  <style>
+    :root { --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) { --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; }
+    }
+    :root[data-theme="dark"] { --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; }
+
+    .wide { width: min(1100px, calc(100vw - 32px)); margin: 1.6em 0 2.2em; position: relative; left: 50%; transform: translateX(-50%); }
+    .panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; min-width: 0; }
+    .panel h3 { font-size: 0.75rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 10px; font-weight: 600; }
+    .toolbar { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+    .toolbar select { font: inherit; font-size: 0.92rem; padding: 0.3em 0.45em; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); }
+    .toolbar label { font-size: 0.9rem; color: var(--muted); display: inline-flex; gap: 6px; align-items: center; }
+    .toolbar .spacer { flex: 1; }
+    .toolbar [hidden] { display: none; }
+    .toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 0.92rem; color: var(--text); cursor: pointer; }
+    .toggle input { accent-color: var(--accent); width: 16px; height: 16px; }
+    .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+    .seg button { border: none; border-radius: 0; background: var(--surface); }
+    .seg button + button { border-left: 1px solid var(--border); }
+    .seg button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
+    .two { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(260px, 1fr); gap: 14px; margin-top: 12px; align-items: start; }
+    .two > * { min-width: 0; }
+    @media (max-width: 860px) { .two { grid-template-columns: minmax(0, 1fr); } }
+
+    /* ---------- Graph ---------- */
+    .graph-wrap { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; overflow-x: auto; }
+    svg.graph { display: block; width: 100%; height: auto; }
+    @media (max-width: 560px) { svg.graph { min-width: 520px; } }
+    .graph text { font-family: var(--sans); pointer-events: none; }
+    .graph .label { font-size: 17px; font-weight: 700; text-anchor: middle; dominant-baseline: central; fill: var(--text); }
+    .graph .sub { font-size: 12.5px; text-anchor: middle; fill: var(--muted); font-variant-numeric: tabular-nums; paint-order: stroke; stroke: var(--bg); stroke-width: 4px; stroke-linejoin: round; }
+    .graph .node circle { fill: var(--surface); stroke: var(--text); stroke-width: 2; }
+    .graph .node.unseen circle { stroke: var(--muted); stroke-dasharray: 3 3; }
+    .graph .node.frontier circle { stroke: var(--accent); stroke-width: 3.5; }
+    .graph .node.done circle { fill: color-mix(in srgb, var(--s3) 22%, var(--surface)); stroke: var(--s3); stroke-width: 2.5; }
+    .graph .ring { fill: none !important; stroke: var(--accent) !important; stroke-width: 2.5 !important; stroke-dasharray: none !important; }
+    .graph .edge { stroke: var(--muted); stroke-width: 2; stroke-linecap: round; }
+    .graph .edge.tree { stroke: var(--text); stroke-width: 4; }
+    .graph .edge.conflict { stroke: var(--warn); stroke-width: 5; }
+    .graph .edge.odd { stroke: var(--warn); stroke-width: 3.5; stroke-dasharray: 7 5; }
+    .graph .edge.extra { stroke-dasharray: 6 4; }
+    .graph .halo { stroke: var(--fresh); stroke-width: 12; stroke-linecap: round; opacity: 0.85; }
+    .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 10px; font-size: 0.82rem; color: var(--muted); align-items: center; }
+    .legend span { display: inline-flex; align-items: center; gap: 6px; }
+
+    /* ---------- Stepper side ---------- */
+    .narration { min-height: 5.5em; }
+    .narration p { margin: 0 0 6px; }
+    pre.code { margin: 0 0 12px; font-size: 0.82rem; line-height: 1.6; overflow-x: auto; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 8px 0; }
+    pre.code span { display: block; padding: 0 12px; border-left: 3px solid transparent; }
+    pre.code span.hl { background: color-mix(in srgb, var(--accent) 16%, transparent); border-left-color: var(--accent); }
+    .stepcount { font-size: 0.85rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; min-height: 2em; align-items: center; margin-bottom: 12px; }
+    .chips .chip { font-weight: 700; padding: 3px 10px; border-radius: 6px; border: 2px solid var(--accent); background: var(--surface); font-size: 0.95rem; }
+    .chips .end { font-size: 0.75rem; color: var(--muted); }
+    .chips .none { color: var(--muted); font-style: italic; font-size: 0.9rem; }
+    .order { font-family: var(--mono); font-size: 0.92rem; margin-bottom: 4px; }
+
+    /* ---------- Grid ---------- */
+    .grid-wrap { overflow-x: auto; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 10px; touch-action: none; }
+    .grid { display: grid; gap: 2px; width: max-content; margin: 0 auto; user-select: none; }
+    .cell {
+      width: 36px; height: 36px; border-radius: 5px; background: var(--surface); border: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: center; font-size: 0.78rem; font-variant-numeric: tabular-nums;
+      color: var(--muted); cursor: pointer; padding: 0;
+    }
+    .cell.filled { background: var(--text); border-color: var(--text); }
+    .cell.path { background: color-mix(in srgb, var(--s3) 45%, var(--surface)); border-color: var(--s3); color: var(--text); font-weight: 700; }
+    .cell.st { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 700; font-size: 0.9rem; }
+    .grid-status { margin-top: 10px; font-size: 0.95rem; }
+
+    .rules { padding-left: 1.2em; }
+    .rules li { margin-bottom: 0.5em; }
+    main h3 { margin: 1.8em 0 0.4em; font-size: 1.15rem; }
+    pre.snippet { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.5; }
+    pre.snippet code { background: none; padding: 0; }
+    table.cmp { border-collapse: collapse; width: 100%; font-size: 0.93rem; margin: 0.6em 0 1.2em; }
+    .cmp th, .cmp td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+    .cmp thead th { color: var(--muted); font-weight: 600; font-size: 0.82rem; }
+  </style>
+</head>
+<body>
+  <main>
+    <nav class="crumbs"><a href="../../">Explainers</a><span>/</span><a href="../">Data Structures &amp; Algorithms</a></nav>
+    <h1>BFS and DFS</h1>
+    <p class="lede">Almost every graph algorithm starts with one of two ways to explore: spread out level by level, or follow one path as deep as it goes. They're the same loop with a different container.</p>
+
+    <h2>One loop, two containers</h2>
+    <p>To explore a graph from a starting vertex, keep a collection of vertices you've found but not yet explored. Repeatedly take one out, look at its neighbors, and add any you haven't seen before. Mark each vertex the first time you see it so nothing gets explored twice.</p>
+    <ul class="rules">
+      <li><strong>Breadth-first search (BFS)</strong> uses a <strong>queue</strong>: first in, first out. It explores everything 1 step away, then everything 2 steps away, and so on, in rings spreading outward.</li>
+      <li><strong>Depth-first search (DFS)</strong> uses a <strong>stack</strong>, usually the call stack via recursion: last in, first out. It follows one path as far as it can, then backs up to the most recent fork and tries the next branch.</li>
+    </ul>
+    <p>Both visit every vertex reachable from the start exactly once, and look at every edge a constant number of times, so both take <strong>O(V + E)</strong> time. What differs is the <em>order</em>, and that order is what makes each one useful for different things.</p>
+
+    <h2>Step through it</h2>
+    <p>Pick BFS or DFS and a starting vertex, then step. The panel on the right shows the queue or stack. Under each vertex, BFS shows its distance from the start and DFS shows the order it was visited. Dark edges are the <strong>search tree</strong>: the edge each vertex was first discovered through.</p>
+  </main>
+
+  <section class="wide" aria-label="BFS and DFS step by step">
+    <div class="panel">
+      <div class="toolbar">
+        <div class="seg" role="group" aria-label="Algorithm">
+          <button data-alg="bfs" aria-pressed="true">BFS</button>
+          <button data-alg="dfs" aria-pressed="false">DFS</button>
+        </div>
+        <label>Start at <select id="s-start" aria-label="Start vertex"></select></label>
+        <span class="spacer"></span>
+        <button id="s-reset" title="Back to the start">⏮</button>
+        <button id="s-back" title="Previous step (←)">← Back</button>
+        <button id="s-next" class="primary" title="Next step (→)">Next →</button>
+        <button id="s-play">▶ Play</button>
+      </div>
+      <div class="two">
+        <div>
+          <div class="graph-wrap"><svg class="graph" id="s-graph" role="img" aria-label="Graph search in progress"></svg></div>
+          <div class="legend" aria-hidden="true">
+            <span><svg width="18" height="18"><circle cx="9" cy="9" r="7" style="fill:var(--surface);stroke:var(--muted);stroke-dasharray:3 3;stroke-width:1.5"/></svg>not seen yet</span>
+            <span><svg width="18" height="18"><circle cx="9" cy="9" r="7" style="fill:var(--surface);stroke:var(--accent);stroke-width:3"/></svg>in the queue / stack</span>
+            <span><svg width="18" height="18"><circle cx="9" cy="9" r="7" style="fill:color-mix(in srgb, var(--s3) 22%, var(--surface));stroke:var(--s3);stroke-width:2"/></svg>explored</span>
+            <span><svg width="26" height="10"><line x1="1" y1="5" x2="25" y2="5" style="stroke:var(--text);stroke-width:4"/></svg>search tree edge</span>
+          </div>
+          <div class="panel narration" style="margin-top:12px">
+            <h3>What's happening <span class="stepcount" id="s-count" style="float:right"></span></h3>
+            <div id="s-text" aria-live="polite"></div>
+          </div>
+        </div>
+        <div class="panel">
+          <h3>Pseudocode</h3>
+          <pre class="code" id="s-code"></pre>
+          <h3 id="s-container-title"></h3>
+          <div class="chips" id="s-container"></div>
+          <h3>Visit order</h3>
+          <div class="order" id="s-order"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <main style="padding-top: 0">
+    <h2>What each one is good for</h2>
+    <table class="cmp">
+      <thead><tr><th scope="col"></th><th scope="col">BFS (queue)</th><th scope="col">DFS (stack / recursion)</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">Explores</th><td>In rings: all vertices at distance 1, then 2, …</td><td>One path deep, then backtracks</td></tr>
+        <tr><th scope="row">Best known for</th><td><strong>Shortest paths when every edge costs the same</strong> (fewest steps, moves, hops)</td><td>Structure: <a href="../cycle-detection/">cycles</a>, <a href="../topological-sort/">topological order</a>, <a href="../bridges/">bridges</a>, <a href="../tarjan-scc/">SCCs</a></td></tr>
+        <tr><th scope="row">Memory</th><td>The queue can hold a whole "ring" at once: wide graphs use a lot</td><td>The stack holds one path: deep graphs use a lot (and recursion can overflow)</td></tr>
+        <tr><th scope="row">Either one works for</th><td colspan="2">Reachability, counting connected components, flood fill, checking whether a graph is bipartite</td></tr>
+      </tbody>
+    </table>
+    <p><strong>Why BFS finds shortest paths:</strong> the queue only ever holds vertices from two neighboring rings (distance <code>d</code> and <code>d + 1</code>), and it always serves the closer ones first. So the first time BFS reaches a vertex, it's by a path with the fewest possible edges. Follow the search tree edges back to the start to recover that path. This only works when every edge counts the same; with weights, you need <a href="../shortest-paths/">Dijkstra</a>.</p>
+    <p><strong>A subtle but important detail:</strong> mark a vertex when you <em>add</em> it to the queue, not when you take it out. Otherwise the same vertex can be added many times before it's explored.</p>
+
+    <h2>Grids are graphs too</h2>
+    <p>Most graph problems in interviews don't hand you a graph. They hand you a <strong>grid</strong>: a maze, a map, a board. Each cell is a vertex, and it's connected to its (up to) four neighbors. No adjacency list needed: just compute the neighbors on the fly.</p>
+    <ul class="rules">
+      <li><strong>Shortest path</strong> through a maze is a BFS from the start cell.</li>
+      <li><strong>Counting islands</strong> (groups of connected land cells) is "count the connected components": scan the grid, and every time you find land you haven't visited, flood-fill it with a BFS or DFS and add one to the count.</li>
+      <li><strong>Multi-source BFS</strong>: put <em>several</em> starting cells in the queue at once (all distance 0). The search spreads from all of them together, which answers questions like "how far is every cell from the nearest exit?" in one pass.</li>
+    </ul>
+    <p>Click or drag on the grid to paint cells.</p>
+  </main>
+
+  <section class="wide" aria-label="Grid playground">
+    <div class="panel">
+      <div class="toolbar">
+        <div class="seg" role="group" aria-label="Grid mode">
+          <button data-gmode="path" aria-pressed="true">Shortest path (BFS)</button>
+          <button data-gmode="islands" aria-pressed="false">Count islands (flood fill)</button>
+        </div>
+        <span class="spacer"></span>
+        <button id="g-random">Random</button>
+        <button id="g-clear">Clear</button>
+      </div>
+      <div class="grid-wrap" style="margin-top:12px"><div class="grid" id="grid" role="grid" aria-label="Grid"></div></div>
+      <div class="grid-status" id="g-status" aria-live="polite"></div>
+    </div>
+  </section>
+
+  <main style="padding-top: 0">
+    <h2>Bipartite graphs: two-coloring with BFS</h2>
+    <p>A graph is <strong>bipartite</strong> if you can split its vertices into two groups so that every edge goes <em>between</em> the groups, never inside one. Think of students and classes, or jobs and workers: edges only connect one kind to the other.</p>
+    <p>To check, run a BFS and color as you go: the start gets one color, its neighbors the other, their neighbors the first again, and so on. BFS's rings make this natural, since each ring gets the opposite color of the one before. If you ever find an edge whose two ends have the <strong>same</strong> color, the graph isn't bipartite.</p>
+    <div class="callout"><strong>The underlying fact:</strong> a graph is bipartite exactly when it has <strong>no cycle of odd length</strong>. Going around a cycle, the colors must alternate, which only works out if the cycle has an even number of edges. When the coloring fails, the clashing edge plus the two search-tree paths back to where they meet form an odd cycle: proof that no coloring could ever work.</div>
+    <p>The graph from the stepper above is bipartite. Add an extra edge and see what happens.</p>
+  </main>
+
+  <section class="wide" aria-label="Bipartite check">
+    <div class="panel">
+      <div class="toolbar">
+        <label class="toggle"><input type="checkbox" id="b-extra1"> Add edge D–E</label>
+        <label class="toggle"><input type="checkbox" id="b-extra2"> Add edge A–F</label>
+        <span class="spacer"></span>
+        <label>Start BFS at <select id="b-start" aria-label="Start vertex"></select></label>
+      </div>
+      <div class="two">
+        <div>
+          <div class="graph-wrap"><svg class="graph" id="b-graph" role="img" aria-label="Two-coloring the graph"></svg></div>
+          <div class="legend" aria-hidden="true">
+            <span><svg width="18" height="18"><circle cx="9" cy="9" r="7" style="fill:color-mix(in srgb, var(--s1) 25%, var(--surface));stroke:var(--s1);stroke-width:2.5"/></svg>color 1</span>
+            <span><svg width="18" height="18"><circle cx="9" cy="9" r="7" style="fill:color-mix(in srgb, var(--s2) 25%, var(--surface));stroke:var(--s2);stroke-width:2.5"/></svg>color 2</span>
+            <span><svg width="26" height="10"><line x1="1" y1="5" x2="25" y2="5" style="stroke:var(--warn);stroke-width:5"/></svg>same-color edge</span>
+            <span><svg width="26" height="10"><line x1="1" y1="5" x2="25" y2="5" style="stroke:var(--warn);stroke-width:3.5;stroke-dasharray:7 5"/></svg>rest of the odd cycle</span>
+          </div>
+        </div>
+        <div class="panel" id="b-status" aria-live="polite"></div>
+      </div>
+    </div>
+  </section>
+
+  <main style="padding-top: 0">
+    <h2>The code</h2>
+    <p>BFS distances, DFS visit order, and the bipartite check in Go. Tested against brute force on thousands of random graphs.</p>
+<pre class="snippet"><code>// BFS returns each vertex's distance (in edges) from start, or -1 if it
+// can't be reached. adj[v] lists v's neighbours.
+func BFS(adj [][]int, start int) []int {
+	dist := make([]int, len(adj))
+	for i := range dist {
+		dist[i] = -1
+	}
+	dist[start] = 0
+	queue := []int{start}
+	for len(queue) &gt; 0 {
+		v := queue[0]
+		queue = queue[1:]
+		for _, w := range adj[v] {
+			if dist[w] == -1 { // mark w when it's first seen, not when it's dequeued
+				dist[w] = dist[v] + 1
+				queue = append(queue, w)
+			}
+		}
+	}
+	return dist
+}
+
+// DFS returns the vertices reachable from start, in the order a depth-first
+// search first visits them.
+func DFS(adj [][]int, start int) []int {
+	visited := make([]bool, len(adj))
+	var order []int
+	var visit func(v int)
+	visit = func(v int) {
+		visited[v] = true
+		order = append(order, v)
+		for _, w := range adj[v] {
+			if !visited[w] {
+				visit(w)
+			}
+		}
+	}
+	visit(start)
+	return order
+}
+
+// Bipartite tries to 2-color an undirected graph so that every edge joins
+// two different colors. It returns the colors (0 or 1) and whether it worked.
+func Bipartite(adj [][]int) ([]int, bool) {
+	color := make([]int, len(adj))
+	for i := range color {
+		color[i] = -1
+	}
+	for s := range adj { // every component gets its own BFS
+		if color[s] != -1 {
+			continue
+		}
+		color[s] = 0
+		queue := []int{s}
+		for len(queue) &gt; 0 {
+			v := queue[0]
+			queue = queue[1:]
+			for _, w := range adj[v] {
+				if color[w] == -1 {
+					color[w] = 1 - color[v]
+					queue = append(queue, w)
+				} else if color[w] == color[v] {
+					return color, false // an edge inside one color means an odd cycle
+				}
+			}
+		}
+	}
+	return color, true
+}</code></pre>
+
+    <h2>Caveats</h2>
+    <ul class="rules">
+      <li><strong>Recursion depth.</strong> Recursive DFS on a long path (say, a 100,000-cell snake in a grid) can overflow the call stack. Use an explicit stack for big inputs.</li>
+      <li><strong>Iterative DFS isn't just BFS with a stack.</strong> If you push all neighbors at once and mark on push, you get a valid search, but not the same visiting order as recursive DFS. Algorithms that rely on DFS structure (like <code>low</code>-link) need the recursive behavior, or an explicit stack of "next neighbor to try" positions.</li>
+      <li><strong>Disconnected graphs.</strong> A single search only reaches the start's component. To cover everything (for counting components or checking bipartiteness), start a new search from every vertex not yet visited.</li>
+    </ul>
+
+    <aside class="interview" aria-label="Interview notes">
+      <h2>Interview notes</h2>
+      <p><b>How often it comes up:</b> <strong>Very high.</strong> BFS and DFS are the foundation of most graph questions, and grid problems are among the most common interview questions of any kind.</p>
+      <p><b>Be ready to:</b></p>
+      <ul><li>Write BFS with a queue (marking on enqueue) and DFS both recursively and with an explicit stack, without hesitating.</li><li>Treat a grid as a graph: neighbors on the fly, bounds checks, marking visited cells.</li><li>Recognize "fewest steps" as BFS, and "several starting points at once" as multi-source BFS.</li><li>Two-color a graph to check bipartiteness, looping over every component.</li></ul>
+      <p><b>Practice:</b></p>
+      <ul><li><span class="lc">LeetCode 200</span> · Number of Islands: count components with flood fill.</li><li><span class="lc">LeetCode 994</span> · Rotting Oranges: multi-source BFS, counting rounds.</li><li><span class="lc">LeetCode 1091</span> · Shortest Path in Binary Matrix: BFS on a grid with 8 directions.</li><li><span class="lc">LeetCode 127</span> · Word Ladder: BFS on a graph you never build explicitly.</li><li><span class="lc">LeetCode 133</span> · Clone Graph: DFS or BFS with a map from old vertices to new.</li><li><span class="lc">LeetCode 785</span> · Is Graph Bipartite?: two-coloring.</li><li><span class="lc">LeetCode 886</span> · Possible Bipartition: two-coloring in disguise.</li></ul>
+    </aside>
+
+    <footer>Part of <a href="../">Data Structures &amp; Algorithms</a> in <a href="../../">Explainers</a>.</footer>
+  </main>
+
+  <script>
+  const $ = id => document.getElementById(id);
+
+  // =====================================================================
+  // The example graph (neighbors visited in alphabetical order)
+  // =====================================================================
+  const NODES = { A: [80, 200], B: [205, 90], C: [205, 310], D: [345, 55], E: [345, 200], F: [345, 345], G: [490, 120], H: [490, 280], I: [630, 200], J: [725, 90] };
+  const BASE_EDGES = 'A-B A-C B-D B-E C-E C-F D-G E-H F-H G-I H-I I-J';
+  const IDS = Object.keys(NODES).sort();
+  const R = 20, W = 780, H = 400;
+
+  function makeGraph(spec) {
+    const edges = spec.split(' ').map((s, id) => { const [a, b] = s.split('-'); return { id, a, b, name: `${a}–${b}` }; });
+    const adj = Object.fromEntries(IDS.map(v => [v, []]));
+    for (const e of edges) { adj[e.a].push({ to: e.b, e: e.id }); adj[e.b].push({ to: e.a, e: e.id }); }
+    for (const v of IDS) adj[v].sort((x, y) => x.to.localeCompare(y.to));
+    return { edges, adj };
+  }
+
+  function draw(svg, g, o) {
+    svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    let s = '';
+    const line = (e, cls) => { const [x1, y1] = NODES[e.a], [x2, y2] = NODES[e.b]; return `<line class="${cls}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`; };
+    for (const e of g.edges) if (o.halo && o.halo.has(e.id)) s += line(e, 'halo');
+    for (const e of g.edges) s += line(e, 'edge ' + (o.edgeClass ? o.edgeClass(e) : ''));
+    for (const v of IDS) {
+      const [x, y] = NODES[v];
+      const st = o.nodeStyle ? o.nodeStyle(v) : {};
+      s += `<g class="node ${st.cls || ''}">`;
+      if (st.ring) s += `<circle class="ring" cx="${x}" cy="${y}" r="${R + 6}"/>`;
+      s += `<circle cx="${x}" cy="${y}" r="${R}" style="${st.style || ''}"/><text class="label" x="${x}" y="${y}">${v}</text>`;
+      if (st.sub != null) s += `<text class="sub" x="${x}" y="${y + R + 16}">${st.sub}</text>`;
+      s += '</g>';
+    }
+    svg.innerHTML = s;
+  }
+
+  // =====================================================================
+  // Traces
+  // =====================================================================
+  const G0 = makeGraph(BASE_EDGES);
+
+  function bfsTrace(g, start) {
+    const dist = { [start]: 0 }, parentEdge = {}, explored = new Set(), queue = [start], order = [start], steps = [];
+    const snap = (line, msg, x = {}) => steps.push({ line, msg, dist: { ...dist }, parentEdge: { ...parentEdge }, explored: new Set(explored), box: [...queue], order: [...order], cur: x.cur ?? null, halo: x.halo ?? [] });
+    snap('init', `<p>Put <b>${start}</b> in the queue and mark it, at distance 0.</p>`);
+    while (queue.length) {
+      const v = queue.shift();
+      const found = [], seen = [];
+      for (const { to: w, e } of g.adj[v]) {
+        if (dist[w] === undefined) { dist[w] = dist[v] + 1; parentEdge[w] = e; queue.push(w); order.push(w); found.push(w); }
+        else seen.push(w);
+      }
+      explored.add(v);
+      snap('pop', `<p>Take <b>${v}</b> from the front of the queue (distance ${dist[v]}) and look at its neighbors.</p>` +
+        (found.length ? `<p>New: <b>${found.join(', ')}</b>. Mark ${found.length === 1 ? 'it' : 'them'} at distance ${dist[v] + 1} and add ${found.length === 1 ? 'it' : 'them'} to the back of the queue.</p>` : '<p>No new neighbors.</p>') +
+        (seen.length ? `<p class="note">Already seen: ${seen.join(', ')}. Skip.</p>` : ''),
+        { cur: v, halo: found.map(w => parentEdge[w]) });
+    }
+    snap('', `<p><b>Done.</b> Every vertex was reached by the fewest possible edges: the number under each vertex is its distance from ${start}, and the dark edges form a shortest-path tree.</p>`);
+    return steps;
+  }
+
+  function dfsTrace(g, start) {
+    const visitNo = {}, parentEdge = {}, finished = new Set(), stack = [], order = [], steps = [];
+    let counter = 0;
+    const snap = (line, msg, x = {}) => steps.push({ line, msg, visitNo: { ...visitNo }, parentEdge: { ...parentEdge }, explored: new Set(finished), box: [...stack], order: [...order], cur: x.cur ?? null, halo: x.halo ?? [] });
+    function visit(v, via) {
+      visitNo[v] = ++counter; stack.push(v); order.push(v);
+      if (via != null) parentEdge[v] = via;
+      snap('visit', via == null
+        ? `<p>Visit <b>${v}</b> (visit #${visitNo[v]}): mark it and push it on the stack.</p>`
+        : `<p>Go deeper: visit <b>${v}</b> (visit #${visitNo[v]}), pushing it on the stack.</p>`, { cur: v, halo: via != null ? [via] : [] });
+      for (const { to: w, e } of g.adj[v]) if (visitNo[w] === undefined) visit(w, e);
+      stack.pop(); finished.add(v);
+      snap('done', `<p><b>${v}</b> has no unvisited neighbors left, so it's finished. Pop it` +
+        (stack.length ? ` and back up to <b>${stack[stack.length - 1]}</b> to try its next neighbor.` : '. The stack is empty.') + '</p>', { cur: stack[stack.length - 1] ?? null });
+    }
+    snap('', `<p>Start at <b>${start}</b>. DFS goes as deep as it can along one path before backing up.</p>`);
+    visit(start, null);
+    snap('', `<p><b>Done.</b> The numbers show the visit order. The dark edges form a <em>DFS tree</em>: long and skinny, unlike BFS's short and wide one.</p>`);
+    return steps;
+  }
+
+  const CODE = {
+    bfs: [['init', 'queue = [start]; mark start'], ['', 'while queue is not empty:'], ['pop', '  v = take from the front'], ['pop', '  for each neighbor w of v:'], ['pop', '    if w is not marked:'], ['pop', '      mark w; dist[w] = dist[v] + 1'], ['pop', '      add w to the back']],
+    dfs: [['visit', 'visit(v):'], ['visit', '  mark v'], ['', '  for each neighbor w of v:'], ['', '    if w is not marked:'], ['visit', '      visit(w)   // go deeper'], ['done', '  // done with v: return']],
+  };
+
+  const st = { alg: 'bfs', start: 'A', steps: null, i: 0, timer: null };
+  $('s-start').innerHTML = IDS.map(v => `<option>${v}</option>`).join('');
+
+  function loadStepper() {
+    stop();
+    st.steps = st.alg === 'bfs' ? bfsTrace(G0, st.start) : dfsTrace(G0, st.start);
+    $('s-code').innerHTML = CODE[st.alg].map(([, t]) => `<span>${t}</span>`).join('');
+    $('s-container-title').textContent = st.alg === 'bfs' ? 'Queue (front first)' : 'Stack (top first)';
+    document.querySelectorAll('[data-alg]').forEach(b => b.setAttribute('aria-pressed', b.dataset.alg === st.alg));
+    show(0);
+  }
+
+  function show(i) {
+    st.i = Math.max(0, Math.min(st.steps.length - 1, i));
+    const s = st.steps[st.i];
+    const inBox = new Set(s.box);
+    const treeEdges = new Set(Object.values(s.parentEdge));
+    draw($('s-graph'), G0, {
+      halo: new Set(s.halo),
+      edgeClass: e => (treeEdges.has(e.id) ? 'tree' : ''),
+      nodeStyle: v => {
+        const seen = st.alg === 'bfs' ? s.dist[v] !== undefined : s.visitNo[v] !== undefined;
+        return {
+          cls: s.explored.has(v) ? 'done' : inBox.has(v) ? 'frontier' : seen ? 'frontier' : 'unseen',
+          ring: s.cur === v,
+          sub: st.alg === 'bfs' ? (s.dist[v] ?? '–') : (s.visitNo[v] ? `#${s.visitNo[v]}` : '–'),
+        };
+      },
+    });
+    const box = st.alg === 'bfs' ? s.box : [...s.box].reverse();
+    $('s-container').innerHTML = box.length
+      ? box.map((v, k) => `<span class="chip">${v}</span>${k === 0 ? `<span class="end">← ${st.alg === 'bfs' ? 'front' : 'top'}</span>` : ''}`).join('')
+      : '<span class="none">empty</span>';
+    $('s-order').textContent = s.order.join(' → ') || '–';
+    $('s-text').innerHTML = s.msg;
+    $('s-count').textContent = `step ${st.i + 1} of ${st.steps.length}`;
+    [...$('s-code').children].forEach((el, k) => el.classList.toggle('hl', s.line !== '' && CODE[st.alg][k][0] === s.line));
+    $('s-back').disabled = st.i === 0;
+    $('s-reset').disabled = st.i === 0;
+    $('s-next').disabled = st.i === st.steps.length - 1;
+    if (st.i === st.steps.length - 1) stop();
+  }
+  function stop() { clearInterval(st.timer); st.timer = null; $('s-play').textContent = '▶ Play'; }
+  $('s-play').addEventListener('click', () => {
+    if (st.timer) return stop();
+    if (st.i === st.steps.length - 1) show(0);
+    $('s-play').textContent = '❚❚ Pause';
+    st.timer = setInterval(() => show(st.i + 1), 1000);
+  });
+  $('s-next').addEventListener('click', () => { stop(); show(st.i + 1); });
+  $('s-back').addEventListener('click', () => { stop(); show(st.i - 1); });
+  $('s-reset').addEventListener('click', () => { stop(); show(0); });
+  document.querySelectorAll('[data-alg]').forEach(b => b.addEventListener('click', () => { st.alg = b.dataset.alg; loadStepper(); }));
+  $('s-start').addEventListener('change', e => { st.start = e.target.value; loadStepper(); });
+  document.addEventListener('keydown', e => {
+    if (e.target.closest('input, select, textarea') || e.metaKey || e.ctrlKey || e.altKey) return;
+    const r = $('s-graph').getBoundingClientRect();
+    if (r.bottom < 0 || r.top > innerHeight) return;
+    if (e.key === 'ArrowRight') { stop(); show(st.i + 1); e.preventDefault(); }
+    if (e.key === 'ArrowLeft') { stop(); show(st.i - 1); e.preventDefault(); }
+  });
+  loadStepper();
+
+  // =====================================================================
+  // Grid playground
+  // =====================================================================
+  const ROWS = 9, COLS = 16;
+  const START = [4, 1], TARGET = [4, 14];
+  const grids = {
+    path: Array.from({ length: ROWS }, (_, r) => Array.from({ length: COLS }, (_, c) => (c === 5 && r !== 7) || (c === 10 && r !== 1) || (r === 4 && c > 5 && c < 9))),
+    islands: Array.from({ length: ROWS }, () => Array(COLS).fill(false)),
+  };
+  [[1,1],[1,2],[2,1],[2,2],[1,6],[2,6],[3,6],[3,7],[6,3],[7,3],[7,4],[5,10],[5,11],[6,11],[6,12],[1,13],[2,13],[2,14],[7,8],[7,13],[7,14],[8,14]].forEach(([r, c]) => (grids.islands[r][c] = true));
+  let gmode = 'path', painting = null;
+  const isST = (r, c) => (r === START[0] && c === START[1]) || (r === TARGET[0] && c === TARGET[1]);
+
+  function gridBFS(g) {
+    const dist = Array.from({ length: ROWS }, () => Array(COLS).fill(-1)), prev = {};
+    const q = [START]; dist[START[0]][START[1]] = 0;
+    while (q.length) {
+      const [r, c] = q.shift();
+      for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+        const nr = r + dr, nc = c + dc;
+        if (nr < 0 || nc < 0 || nr >= ROWS || nc >= COLS || g[nr][nc] || dist[nr][nc] !== -1) continue;
+        dist[nr][nc] = dist[r][c] + 1; prev[nr * COLS + nc] = r * COLS + c; q.push([nr, nc]);
+      }
+    }
+    const path = new Set();
+    if (dist[TARGET[0]][TARGET[1]] !== -1) for (let k = TARGET[0] * COLS + TARGET[1]; k !== undefined; k = prev[k]) path.add(k);
+    return { dist, path };
+  }
+
+  function islandsOf(g) {
+    const label = Array.from({ length: ROWS }, () => Array(COLS).fill(-1));
+    let count = 0;
+    for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+      if (!g[r][c] || label[r][c] !== -1) continue;
+      const stack = [[r, c]]; label[r][c] = count;
+      while (stack.length) {
+        const [a, b] = stack.pop();
+        for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+          const nr = a + dr, nc = b + dc;
+          if (nr >= 0 && nc >= 0 && nr < ROWS && nc < COLS && g[nr][nc] && label[nr][nc] === -1) { label[nr][nc] = count; stack.push([nr, nc]); }
+        }
+      }
+      count++;
+    }
+    return { label, count };
+  }
+
+  const ISLAND_COLORS = ['--s1', '--s2', '--s3', '--s4'];
+  function renderGrid() {
+    const g = grids[gmode];
+    const el = $('grid');
+    el.style.gridTemplateColumns = `repeat(${COLS}, 36px)`;
+    let html = '';
+    if (gmode === 'path') {
+      const { dist, path } = gridBFS(g);
+      for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+        const k = r * COLS + c;
+        if (r === START[0] && c === START[1]) html += `<button class="cell st" data-r="${r}" data-c="${c}" aria-label="Start">S</button>`;
+        else if (r === TARGET[0] && c === TARGET[1]) html += `<button class="cell st" data-r="${r}" data-c="${c}" aria-label="Target">T</button>`;
+        else if (g[r][c]) html += `<button class="cell filled" data-r="${r}" data-c="${c}" aria-label="Wall"></button>`;
+        else html += `<button class="cell${path.has(k) ? ' path' : ''}" data-r="${r}" data-c="${c}" aria-label="Open, distance ${dist[r][c]}">${dist[r][c] >= 0 ? dist[r][c] : ''}</button>`;
+      }
+      const d = dist[TARGET[0]][TARGET[1]];
+      $('g-status').innerHTML = d >= 0
+        ? `Shortest path from <b>S</b> to <b>T</b>: <b>${d}</b> steps (highlighted). Each number is that cell's distance from S: the rings BFS spread through. Click cells to add or remove walls.`
+        : `<b>T</b> can't be reached: the walls cut it off. BFS explored every cell it could reach (numbered) and stopped.`;
+    } else {
+      const { label, count } = islandsOf(g);
+      for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+        if (g[r][c]) {
+          const col = ISLAND_COLORS[label[r][c] % ISLAND_COLORS.length];
+          html += `<button class="cell" data-r="${r}" data-c="${c}" aria-label="Land, island ${label[r][c] + 1}" style="background:color-mix(in srgb, var(${col}) 55%, var(--surface));border-color:var(${col});color:var(--text);font-weight:700">${label[r][c] + 1}</button>`;
+        } else html += `<button class="cell" data-r="${r}" data-c="${c}" aria-label="Water"></button>`;
+      }
+      $('g-status').innerHTML = `<b>${count}</b> island${count === 1 ? '' : 's'}. Scanning row by row, each time we hit land we haven't labeled, we flood-fill it (a DFS here) and give it the next number. Cells only connect up, down, left and right, not diagonally. Click cells to add or remove land.`;
+    }
+    el.innerHTML = html;
+    document.querySelectorAll('[data-gmode]').forEach(b => b.setAttribute('aria-pressed', b.dataset.gmode === gmode));
+  }
+  function paintAt(target) {
+    const cell = target.closest('.cell');
+    if (!cell) return;
+    const r = Number(cell.dataset.r), c = Number(cell.dataset.c);
+    if (gmode === 'path' && isST(r, c)) return;
+    const g = grids[gmode];
+    if (painting === null) painting = !g[r][c];
+    if (g[r][c] !== painting) { g[r][c] = painting; renderGrid(); }
+  }
+  $('grid').addEventListener('pointerdown', e => { painting = null; paintAt(e.target); });
+  $('grid').addEventListener('pointerover', e => { if (painting !== null && e.buttons) paintAt(e.target); });
+  window.addEventListener('pointerup', () => { painting = null; });
+  $('grid').addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { painting = null; paintAt(e.target); painting = null; e.preventDefault(); } });
+  document.querySelectorAll('[data-gmode]').forEach(b => b.addEventListener('click', () => { gmode = b.dataset.gmode; renderGrid(); }));
+  $('g-clear').addEventListener('click', () => { grids[gmode] = Array.from({ length: ROWS }, () => Array(COLS).fill(false)); renderGrid(); });
+  $('g-random').addEventListener('click', () => {
+    const p = gmode === 'path' ? 0.28 : 0.38;
+    grids[gmode] = Array.from({ length: ROWS }, (_, r) => Array.from({ length: COLS }, (_, c) => !(gmode === 'path' && isST(r, c)) && Math.random() < p));
+    renderGrid();
+  });
+  renderGrid();
+
+  // =====================================================================
+  // Bipartite check
+  // =====================================================================
+  $('b-start').innerHTML = IDS.map(v => `<option>${v}</option>`).join('');
+  function renderBipartite() {
+    let spec = BASE_EDGES;
+    if ($('b-extra1').checked) spec += ' D-E';
+    if ($('b-extra2').checked) spec += ' A-F';
+    const g = makeGraph(spec);
+    const base = BASE_EDGES.split(' ').length;
+    const start = $('b-start').value || 'A';
+    const color = {}, parentEdge = {}, depth = {};
+    let conflict = null;
+    for (const s of [start, ...IDS.filter(v => v !== start)]) {
+      if (color[s] !== undefined) continue;
+      color[s] = 0; depth[s] = 0;
+      const q = [s];
+      while (q.length && !conflict) {
+        const v = q.shift();
+        for (const { to: w, e } of g.adj[v]) {
+          if (color[w] === undefined) { color[w] = 1 - color[v]; parentEdge[w] = e; depth[w] = depth[v] + 1; q.push(w); }
+          else if (color[w] === color[v]) { conflict = g.edges[e]; break; }
+        }
+      }
+      if (conflict) break;
+    }
+    // Odd cycle: tree paths from both ends of the clashing edge up to where they meet.
+    const odd = new Set(), cycleV = [];
+    if (conflict) {
+      let a = conflict.a, b = conflict.b;
+      const up = v => { const e = g.edges[parentEdge[v]]; odd.add(e.id); return e.a === v ? e.b : e.a; };
+      const left = [a], right = [b];
+      while (depth[a] > depth[b]) { a = up(a); left.push(a); }
+      while (depth[b] > depth[a]) { b = up(b); right.push(b); }
+      while (a !== b) { a = up(a); b = up(b); left.push(a); right.push(b); }
+      right.pop();
+      cycleV.push(...left, ...right.reverse());
+    }
+    draw($('b-graph'), g, {
+      edgeClass: e => (conflict && e.id === conflict.id ? 'conflict' : odd.has(e.id) ? 'odd' : '') + (e.id >= base ? ' extra' : ''),
+      nodeStyle: v => ({
+        ring: v === start,
+        style: color[v] === undefined ? '' : `fill:color-mix(in srgb, var(${color[v] ? '--s2' : '--s1'}) 25%, var(--surface));stroke:var(${color[v] ? '--s2' : '--s1'});stroke-width:3`,
+      }),
+    });
+    $('b-status').innerHTML = conflict
+      ? `<p class="bad" style="color:var(--warn);font-weight:600">Not bipartite.</p>
+         <p>BFS from ${start} gave <code>${conflict.a}</code> and <code>${conflict.b}</code> the same color, but they're joined by an edge.</p>
+         <p>That edge plus the search-tree paths back to where they meet form a cycle of <b>${cycleV.length}</b> edges: ${cycleV.join(' → ')} → ${cycleV[0]}. It's odd, so no two-coloring can exist, whichever coloring you try.</p>
+         <p class="note">The search stops at the first clash, so some vertices may be left uncolored.</p>`
+      : `<p style="color:var(--ok);font-weight:600">Bipartite.</p>
+         <p>Every edge joins the two colors. The groups are <b>${IDS.filter(v => color[v] === 0).join(', ')}</b> and <b>${IDS.filter(v => color[v] === 1).join(', ')}</b>.</p>
+         <p class="note">Notice the colors are just BFS's rings, alternating: even distances one color, odd distances the other.</p>`;
+  }
+  ['b-extra1', 'b-extra2', 'b-start'].forEach(id => $(id).addEventListener('change', renderBipartite));
+  renderBipartite();
+  </script>
+</body>
+</html>

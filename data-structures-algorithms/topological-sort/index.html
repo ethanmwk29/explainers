@@ -1,0 +1,407 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Topological Sort</title>
+  <meta name="description" content="Order tasks so every dependency comes first: Kahn's algorithm and the DFS method, step by step, plus how both detect cycles.">
+  <link rel="stylesheet" href="../../style.css?v=6">
+  <script src="../../theme.js"></script>
+  <style>
+    :root { --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) { --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; }
+    }
+    :root[data-theme="dark"] { --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; }
+
+    .wide { width: min(1100px, calc(100vw - 32px)); margin: 1.6em 0 2.2em; position: relative; left: 50%; transform: translateX(-50%); }
+    .panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; min-width: 0; }
+    .panel h3 { font-size: 0.75rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 10px; font-weight: 600; }
+    .toolbar { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+    .toolbar .spacer { flex: 1; }
+    .toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 0.92rem; color: var(--text); cursor: pointer; }
+    .toggle input { accent-color: var(--accent); width: 16px; height: 16px; }
+    .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+    .seg button { border: none; border-radius: 0; background: var(--surface); }
+    .seg button + button { border-left: 1px solid var(--border); }
+    .seg button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
+    .two { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(260px, 1fr); gap: 14px; margin-top: 12px; align-items: start; }
+    .two > * { min-width: 0; }
+    @media (max-width: 860px) { .two { grid-template-columns: minmax(0, 1fr); } }
+
+    .graph-wrap { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; overflow-x: auto; }
+    svg.graph { display: block; width: 100%; height: auto; }
+    @media (max-width: 560px) { svg.graph { min-width: 540px; } }
+    .graph text { font-family: var(--sans); pointer-events: none; }
+    .graph .label { font-size: 14px; font-weight: 700; text-anchor: middle; dominant-baseline: central; fill: var(--text); }
+    .graph .badge-bg { fill: var(--bg); stroke: var(--border); }
+    .graph .badge { font-size: 11.5px; font-weight: 700; text-anchor: middle; dominant-baseline: central; fill: var(--text); font-variant-numeric: tabular-nums; }
+    .graph .node rect { fill: var(--surface); stroke: var(--text); stroke-width: 2; }
+    .graph .node.white rect { stroke: var(--muted); stroke-dasharray: 3 3; }
+    .graph .node.ready rect { stroke: var(--accent); stroke-width: 3.5; }
+    .graph .node.gray rect { fill: color-mix(in srgb, var(--s4) 30%, var(--surface)); stroke: var(--s4); stroke-width: 3; }
+    .graph .node.done rect { fill: color-mix(in srgb, var(--s3) 22%, var(--surface)); stroke: var(--s3); stroke-width: 2.5; }
+    .graph .node.stuck rect { fill: color-mix(in srgb, var(--warn) 18%, var(--surface)); stroke: var(--warn); stroke-width: 3; }
+    .graph .ring { fill: none !important; stroke: var(--accent) !important; stroke-width: 2.5 !important; stroke-dasharray: none !important; }
+    .graph .edge { stroke: var(--muted); stroke-width: 2; fill: none; }
+    .graph .edge.used { stroke: var(--muted); opacity: 0.3; }
+    .graph .edge.back { stroke: var(--warn); stroke-width: 4; }
+    .graph .edge.extra { stroke-dasharray: 6 4; }
+    .graph .halo { stroke: var(--fresh); stroke-width: 12; stroke-linecap: round; opacity: 0.85; fill: none; }
+    .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 10px; font-size: 0.82rem; color: var(--muted); align-items: center; }
+    .legend span { display: inline-flex; align-items: center; gap: 6px; }
+
+    .narration { min-height: 5.5em; }
+    .narration p { margin: 0 0 6px; }
+    pre.code { margin: 0 0 12px; font-size: 0.82rem; line-height: 1.6; overflow-x: auto; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 8px 0; }
+    pre.code span { display: block; padding: 0 12px; border-left: 3px solid transparent; }
+    pre.code span.hl { background: color-mix(in srgb, var(--accent) 16%, transparent); border-left-color: var(--accent); }
+    .stepcount { font-size: 0.85rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; min-height: 2em; align-items: center; margin-bottom: 12px; }
+    .chips .chip { font-weight: 600; padding: 3px 9px; border-radius: 6px; border: 2px solid var(--accent); background: var(--surface); font-size: 0.88rem; }
+    .chips .chip.out { border-color: var(--s3); }
+    .chips .none { color: var(--muted); font-style: italic; font-size: 0.9rem; }
+
+    .rules { padding-left: 1.2em; }
+    .rules li { margin-bottom: 0.5em; }
+    main h3 { margin: 1.8em 0 0.4em; font-size: 1.15rem; }
+    pre.snippet { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.5; }
+    pre.snippet code { background: none; padding: 0; }
+  </style>
+</head>
+<body>
+  <main>
+    <nav class="crumbs"><a href="../../">Explainers</a><span>/</span><a href="../">Data Structures &amp; Algorithms</a></nav>
+    <h1>Topological sort</h1>
+    <p class="lede">Put tasks in an order where every task comes after the things it depends on. Two simple algorithms do it in linear time, and both tell you when it's impossible.</p>
+
+    <h2>The problem</h2>
+    <p>Some tasks have to happen before others: you put on socks before shoes, compile a library before the program that uses it, take Calculus I before Calculus II. Draw each task as a vertex and each "must come before" as a directed edge <code>u → v</code>. A <strong>topological order</strong> lists every vertex so that every edge points forward: <code>u</code> always comes before <code>v</code>.</p>
+    <ul class="rules">
+      <li><strong>It exists exactly when the graph has no directed cycle.</strong> A graph like that is called a DAG (directed acyclic graph). If shirt must come before tie, tie before jacket, and jacket before shirt, there's no valid order.</li>
+      <li><strong>There's usually more than one.</strong> Socks and shirt don't depend on each other, so either can go first. The order is unique only when every consecutive pair in it is joined by an edge.</li>
+    </ul>
+
+    <h2>Two ways to do it</h2>
+    <ul class="rules">
+      <li><strong>Kahn's algorithm</strong> (BFS-style): repeatedly take any task that has nothing left in front of it. Track each vertex's <em>in-degree</em> (how many unfinished prerequisites it has). Start with every vertex at in-degree 0 in a queue; each time you output a vertex, remove its outgoing edges, and any vertex whose in-degree drops to 0 joins the queue.</li>
+      <li><strong>DFS method</strong>: run a depth-first search, and add each vertex to a list when it <em>finishes</em>, that is, after everything it points to has finished. Reverse the list at the end. A vertex finishes only after all its dependents, so reversing puts it before all of them.</li>
+    </ul>
+    <p>Both run in <strong>O(V + E)</strong>. Step through each below on the classic "getting dressed" example, then tick <strong>Add jacket → shirt</strong> to create a cycle and see how each one notices.</p>
+  </main>
+
+  <section class="wide" aria-label="Topological sort step by step">
+    <div class="panel">
+      <div class="toolbar">
+        <div class="seg" role="group" aria-label="Algorithm">
+          <button data-alg="kahn" aria-pressed="true">Kahn's algorithm</button>
+          <button data-alg="dfs" aria-pressed="false">DFS</button>
+        </div>
+        <label class="toggle"><input type="checkbox" id="cycle"> Add jacket → shirt (a cycle)</label>
+        <span class="spacer"></span>
+        <button id="s-reset" title="Back to the start">⏮</button>
+        <button id="s-back" title="Previous step (←)">← Back</button>
+        <button id="s-next" class="primary" title="Next step (→)">Next →</button>
+        <button id="s-play">▶ Play</button>
+      </div>
+      <div class="two">
+        <div>
+          <div class="graph-wrap"><svg class="graph" id="s-graph" role="img" aria-label="Dependency graph"></svg></div>
+          <div class="legend" aria-hidden="true" id="s-legend"></div>
+          <div class="panel narration" style="margin-top:12px">
+            <h3>What's happening <span class="stepcount" id="s-count" style="float:right"></span></h3>
+            <div id="s-text" aria-live="polite"></div>
+          </div>
+        </div>
+        <div class="panel">
+          <h3>Pseudocode</h3>
+          <pre class="code" id="s-code"></pre>
+          <h3 id="s-box-title"></h3>
+          <div class="chips" id="s-box"></div>
+          <h3>Topological order</h3>
+          <div class="chips" id="s-out"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <main style="padding-top: 0">
+    <h2>How each one detects a cycle</h2>
+    <ul class="rules">
+      <li><strong>Kahn's algorithm gets stuck.</strong> Vertices on a cycle each wait on another vertex of the cycle, so their in-degrees never reach 0. If the output has fewer than <code>V</code> vertices, there's a cycle. One subtlety: the leftover vertices aren't all <em>on</em> a cycle. Some are just downstream of one, waiting on something that will never finish (like <code>shoes</code> would be if a cycle ran through <code>pants</code>).</li>
+      <li><strong>DFS finds an edge back into its current path.</strong> Vertices are <em>white</em> (unvisited), <em>gray</em> (on the current path, still being explored) or <em>black</em> (finished). An edge to a gray vertex leads back to an ancestor on the current path: a cycle. An edge to a black vertex is fine, since that vertex is already fully explored and can't lead back. Just tracking "visited" isn't enough to tell those apart; see the <a href="../cycle-detection/">cycle detection cheat sheet</a>.</li>
+    </ul>
+
+    <h2>Kahn or DFS?</h2>
+    <ul class="rules">
+      <li><strong>Kahn's</strong> is iterative (no recursion-depth worries), produces the order front to back, and makes it easy to control <em>which</em> valid order you get: use a priority queue instead of a plain queue to always pick, say, the alphabetically smallest available task. Its leftovers tell you which tasks are blocked.</li>
+      <li><strong>DFS</strong> is short to write if you already have a DFS, and it's the same machinery as <a href="../tarjan-scc/">Tarjan's SCC algorithm</a>, which outputs components in reverse topological order.</li>
+    </ul>
+
+    <h2>Where it connects</h2>
+    <ul class="rules">
+      <li><strong>Graphs with cycles:</strong> collapse each <a href="../tarjan-scc/">strongly connected component</a> into a single vertex and the result is always a DAG, which you can then sort. That's how dependency tools report "these packages depend on each other in a loop" and still order everything else.</li>
+      <li><strong>Dynamic programming on DAGs:</strong> processing vertices in topological order means every vertex's predecessors are done first. That makes longest paths, counting paths, and earliest start times for scheduled tasks one pass each.</li>
+      <li><strong>Everyday uses:</strong> build systems (make, Bazel), spreadsheet recalculation, package installers, course planning, and job schedulers all topologically sort a dependency graph.</li>
+    </ul>
+
+    <h2>The code</h2>
+    <p>Both methods in Go, returning the order and whether one exists. Tested against brute force on thousands of random graphs, including self-loops and duplicate edges.</p>
+<pre class="snippet"><code>import "slices"
+
+// TopoSortKahn orders vertices 0..n-1 so that every edge u→v has u before v.
+// ok is false if the graph has a cycle (then no such order exists).
+func TopoSortKahn(n int, edges [][2]int) (order []int, ok bool) {
+	adj := make([][]int, n)
+	indegree := make([]int, n)
+	for _, e := range edges {
+		adj[e[0]] = append(adj[e[0]], e[1])
+		indegree[e[1]]++
+	}
+	var queue []int
+	for v := 0; v &lt; n; v++ {
+		if indegree[v] == 0 { // nothing has to come before v
+			queue = append(queue, v)
+		}
+	}
+	for len(queue) &gt; 0 {
+		v := queue[0]
+		queue = queue[1:]
+		order = append(order, v)
+		for _, w := range adj[v] {
+			indegree[w]--
+			if indegree[w] == 0 {
+				queue = append(queue, w)
+			}
+		}
+	}
+	return order, len(order) == n // vertices left over means a cycle
+}
+
+// TopoSortDFS does the same with a depth-first search: each vertex is added
+// after everything it points to, and the list is reversed at the end.
+func TopoSortDFS(n int, edges [][2]int) (order []int, ok bool) {
+	adj := make([][]int, n)
+	for _, e := range edges {
+		adj[e[0]] = append(adj[e[0]], e[1])
+	}
+	const white, gray, black = 0, 1, 2 // unvisited, on the current path, finished
+	color := make([]int, n)
+	ok = true
+	var visit func(v int)
+	visit = func(v int) {
+		color[v] = gray
+		for _, w := range adj[v] {
+			if color[w] == gray {
+				ok = false // an edge back into the current path: a cycle
+			} else if color[w] == white {
+				visit(w)
+			}
+		}
+		color[v] = black
+		order = append(order, v)
+	}
+	for v := 0; v &lt; n; v++ {
+		if color[v] == white {
+			visit(v)
+		}
+	}
+	slices.Reverse(order)
+	return order, ok
+}</code></pre>
+
+    <aside class="interview" aria-label="Interview notes">
+      <h2>Interview notes</h2>
+      <p><b>How often it comes up:</b> <strong>High.</strong> "Course Schedule" is one of the most frequently asked graph problems, and dependency ordering shows up in many disguises.</p>
+      <p><b>Be ready to:</b></p>
+      <ul><li>Write Kahn's algorithm from memory, including the "fewer than V vertices means a cycle" check.</li><li>Write the DFS version with three colors, and explain why two (just "visited") isn't enough.</li><li>Build the graph from the problem's input: watch the edge direction ("a requires b" means <code>b → a</code>).</li></ul>
+      <p><b>Practice:</b></p>
+      <ul><li><span class="lc">LeetCode 207</span> · Course Schedule: does a valid order exist? (cycle detection)</li><li><span class="lc">LeetCode 210</span> · Course Schedule II: return an order.</li><li><span class="lc">LeetCode 269</span> · Alien Dictionary: build the graph from adjacent words, then sort (premium).</li><li><span class="lc">LeetCode 802</span> · Find Eventual Safe States: Kahn's on the reversed graph.</li><li><span class="lc">LeetCode 310</span> · Minimum Height Trees: peel leaves layer by layer, Kahn-style.</li><li><span class="lc">LeetCode 1203</span> · Sort Items by Groups Respecting Dependencies: hard: two levels of topological sort.</li></ul>
+    </aside>
+
+    <footer>Part of <a href="../">Data Structures &amp; Algorithms</a> in <a href="../../">Explainers</a>.</footer>
+  </main>
+
+  <script>
+  const $ = id => document.getElementById(id);
+
+  const NODES = {
+    undershorts: [90, 60], shirt: [90, 165], socks: [90, 265], watch: [90, 345],
+    pants: [285, 85], tie: [285, 215],
+    belt: [470, 135], shoes: [470, 295],
+    jacket: [660, 175],
+  };
+  const BASE = 'undershorts>pants undershorts>shoes pants>belt pants>shoes shirt>belt shirt>tie tie>jacket belt>jacket socks>shoes';
+  const ORDER = ['belt', 'jacket', 'pants', 'shirt', 'shoes', 'socks', 'tie', 'undershorts', 'watch']; // alphabetical: ties broken this way
+  const HW = 52, HH = 19, W = 760, H = 390;
+
+  function makeGraph(cycle) {
+    const edges = (BASE + (cycle ? ' jacket>shirt' : '')).split(' ').map((s, id) => { const [a, b] = s.split('>'); return { id, a, b, name: `${a} → ${b}` }; });
+    const out = Object.fromEntries(ORDER.map(v => [v, []]));
+    for (const e of edges) out[e.a].push(e);
+    for (const v of ORDER) out[v].sort((x, y) => x.b.localeCompare(y.b));
+    return { edges, out, base: BASE.split(' ').length };
+  }
+
+  // Endpoint on the border of a node's rectangle, in the direction of (dx, dy).
+  function border(v, dx, dy, pad = 0) {
+    const [x, y] = NODES[v];
+    const t = Math.min((HW + pad) / Math.abs(dx || 1e-9), (HH + pad) / Math.abs(dy || 1e-9));
+    return [x + dx * t, y + dy * t];
+  }
+  function edgePath(g, e) {
+    const [x1, y1] = NODES[e.a], [x2, y2] = NODES[e.b];
+    const dx = x2 - x1, dy = y2 - y1;
+    const [sx, sy] = border(e.a, dx, dy, 1), [ex, ey] = border(e.b, -dx, -dy, 5);
+    return `M${sx.toFixed(1)} ${sy.toFixed(1)} L${ex.toFixed(1)} ${ey.toFixed(1)}`;
+  }
+
+  function draw(g, s) {
+    const svg = $('s-graph');
+    svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    let out = `<defs>
+      <marker id="arr" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" style="fill:var(--muted)"/></marker>
+      <marker id="arr-back" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" style="fill:var(--warn)"/></marker></defs>`;
+    for (const e of g.edges) if (s.halo === e.id) out += `<path class="halo" d="${edgePath(g, e)}"/>`;
+    for (const e of g.edges) {
+      const cls = [s.edgeCls[e.id] || '', e.id >= g.base ? 'extra' : ''].join(' ');
+      out += `<path class="edge ${cls}" d="${edgePath(g, e)}" marker-end="url(#${s.edgeCls[e.id] === 'back' ? 'arr-back' : 'arr'})"/>`;
+    }
+    for (const v of ORDER) {
+      const [x, y] = NODES[v];
+      out += `<g class="node ${s.nodeCls[v] || ''}">`;
+      if (s.cur === v) out += `<rect class="ring" x="${x - HW - 6}" y="${y - HH - 6}" width="${2 * HW + 12}" height="${2 * HH + 12}" rx="14"/>`;
+      out += `<rect x="${x - HW}" y="${y - HH}" width="${2 * HW}" height="${2 * HH}" rx="9"/><text class="label" x="${x}" y="${y}">${v}</text>`;
+      if (s.badge && s.badge[v] != null) out += `<circle class="badge-bg" cx="${x + HW}" cy="${y - HH}" r="10"/><text class="badge" x="${x + HW}" y="${y - HH}">${s.badge[v]}</text>`;
+      out += '</g>';
+    }
+    svg.innerHTML = out;
+  }
+
+  // ---------- Kahn's algorithm ----------
+  function kahnTrace(g) {
+    const indeg = Object.fromEntries(ORDER.map(v => [v, 0]));
+    for (const e of g.edges) indeg[e.b]++;
+    const queue = ORDER.filter(v => indeg[v] === 0), out = [], removed = new Set(), steps = [];
+    const snap = (line, msg, x = {}) => {
+      const nodeCls = {};
+      for (const v of ORDER) nodeCls[v] = out.includes(v) ? 'done' : queue.includes(v) ? 'ready' : x.stuck && x.stuck.includes(v) ? 'stuck' : '';
+      const edgeCls = {}; for (const id of removed) edgeCls[id] = 'used';
+      steps.push({ line, msg, nodeCls, edgeCls, badge: { ...indeg }, box: [...queue], out: [...out], cur: x.cur ?? null, halo: null });
+    };
+    snap('init', `<p>Count each task's prerequisites: its <b>in-degree</b> (the badge). Tasks at 0 can go right now, so they start in the queue: <b>${queue.join(', ')}</b>.</p>`);
+    while (queue.length) {
+      const v = queue.shift();
+      out.push(v);
+      const freed = [];
+      for (const e of g.out[v]) { removed.add(e.id); indeg[e.b]--; if (indeg[e.b] === 0) { queue.push(e.b); freed.push(e.b); } }
+      snap('pop', `<p>Take <b>${v}</b> from the queue and add it to the order. Remove its outgoing edges, lowering each target's in-degree.</p>` +
+        (freed.length ? `<p>Now free to go: <b>${freed.join(', ')}</b> (in-degree 0), so ${freed.length === 1 ? 'it joins' : 'they join'} the queue.</p>` : ''), { cur: v });
+    }
+    if (out.length === ORDER.length) {
+      snap('', `<p><b>Done.</b> All ${ORDER.length} tasks are in a valid order: every edge points forward. Other valid orders exist; this one comes from breaking ties alphabetically.</p>`);
+    } else {
+      const stuck = ORDER.filter(v => !out.includes(v));
+      snap('stuck', `<p><b>Stuck.</b> The queue is empty but ${stuck.length} task${stuck.length === 1 ? ' is' : 's are'} left (<b>${stuck.join(', ')}</b>), each still waiting on something. That means there's a <b>cycle</b>, so no topological order exists.</p><p class="note">Here all four are on a cycle. In general, the leftovers can also include tasks that are merely downstream of a cycle, waiting on something that will never be freed.</p>`, { stuck });
+    }
+    return steps;
+  }
+
+  // ---------- DFS method ----------
+  function dfsTrace(g) {
+    const color = Object.fromEntries(ORDER.map(v => [v, 'white'])), finished = [], steps = [], path = [];
+    let back = null;
+    const snap = (line, msg, x = {}) => {
+      const edgeCls = {}; if (back != null) edgeCls[back] = 'back';
+      steps.push({ line, msg, nodeCls: { ...color }, edgeCls, badge: null, box: [...path].reverse(), out: [...finished].reverse(), cur: x.cur ?? null, halo: x.halo ?? null, finishedRaw: [...finished] });
+    };
+    function visit(v) {
+      color[v] = 'gray'; path.push(v);
+      snap('visit', `<p>Visit <b>${v}</b>: color it <b>gray</b> (on the current path).</p>`, { cur: v });
+      for (const e of g.out[v]) {
+        if (back != null) return;
+        if (color[e.b] === 'gray') {
+          back = e.id;
+          snap('cycle', `<p>Edge <b>${e.name}</b> leads to <b>${e.b}</b>, which is <b>gray</b>: it's on the current path (${path.join(' → ')}). This edge closes a loop back to it, so there's a <b>cycle</b> and no topological order exists.</p>`, { cur: v, halo: e.id });
+          return;
+        }
+        if (color[e.b] === 'done') {
+          snap('skip', `<p>Edge <b>${e.name}</b>: ${e.b} is already <b>black</b> (finished), so it can't lead back here. Skip it.</p>`, { cur: v, halo: e.id });
+        } else {
+          snap('recurse', `<p>Edge <b>${e.name}</b>: ${e.b} is unvisited, so go deeper.</p>`, { cur: v, halo: e.id });
+          visit(e.b);
+          if (back != null) return;
+        }
+      }
+      color[v] = 'done'; path.pop(); finished.push(v);
+      snap('finish', `<p><b>${v}</b> is finished: everything it points to is done. Color it black and put it at the <b>front</b> of the order (the same as appending, then reversing at the end).</p>`, { cur: v });
+    }
+    snap('', `<p>Run a DFS from each unvisited task in turn (alphabetically). A task is added to the order only once everything after it is finished.</p>`);
+    for (const v of ORDER) { if (back != null) break; if (color[v] === 'white') visit(v); }
+    if (back == null) snap('', `<p><b>Done.</b> Every task finished after the tasks that depend on it, so listing them in reverse finishing order puts every prerequisite first. A different valid order from Kahn's, just as correct.</p>`);
+    return steps;
+  }
+
+  const CODE = {
+    kahn: [['init', 'indegree[v] = number of edges into v'], ['init', 'queue = all v with indegree 0'], ['', 'while queue is not empty:'], ['pop', '  v = take from queue; append v to order'], ['pop', '  for each edge v → w:'], ['pop', '    indegree[w]--; if 0, add w to queue'], ['stuck', 'if order has fewer than V vertices:'], ['stuck', '  there is a cycle']],
+    dfs: [['visit', 'visit(v):'], ['visit', '  color v gray'], ['', '  for each edge v → w:'], ['cycle', '    if w is gray: cycle!'], ['recurse', '    if w is white: visit(w)'], ['skip', '    (if w is black: already done)'], ['finish', '  color v black; put v at the front']],
+  };
+
+  const st = { alg: 'kahn', g: null, steps: null, i: 0, timer: null };
+  function load() {
+    stop();
+    st.g = makeGraph($('cycle').checked);
+    st.steps = st.alg === 'kahn' ? kahnTrace(st.g) : dfsTrace(st.g);
+    $('s-code').innerHTML = CODE[st.alg].map(([, t]) => `<span>${t}</span>`).join('');
+    $('s-box-title').textContent = st.alg === 'kahn' ? 'Queue: ready to go' : 'Current DFS path (deepest first)';
+    $('s-legend').innerHTML = st.alg === 'kahn'
+      ? `<span><svg width="22" height="14"><rect x="1" y="1" width="20" height="12" rx="3" style="fill:var(--surface);stroke:var(--accent);stroke-width:3"/></svg>in the queue</span>
+         <span><svg width="22" height="14"><rect x="1" y="1" width="20" height="12" rx="3" style="fill:color-mix(in srgb, var(--s3) 22%, var(--surface));stroke:var(--s3);stroke-width:2"/></svg>in the order</span>
+         <span><svg width="22" height="14"><rect x="1" y="1" width="20" height="12" rx="3" style="fill:color-mix(in srgb, var(--warn) 18%, var(--surface));stroke:var(--warn);stroke-width:2.5"/></svg>stuck</span>
+         <span>badge: remaining in-degree</span>`
+      : `<span><svg width="22" height="14"><rect x="1" y="1" width="20" height="12" rx="3" style="fill:var(--surface);stroke:var(--muted);stroke-dasharray:3 3;stroke-width:1.5"/></svg>white: unvisited</span>
+         <span><svg width="22" height="14"><rect x="1" y="1" width="20" height="12" rx="3" style="fill:color-mix(in srgb, var(--s4) 30%, var(--surface));stroke:var(--s4);stroke-width:2.5"/></svg>gray: on the current path</span>
+         <span><svg width="22" height="14"><rect x="1" y="1" width="20" height="12" rx="3" style="fill:color-mix(in srgb, var(--s3) 22%, var(--surface));stroke:var(--s3);stroke-width:2"/></svg>black: finished</span>
+         <span><svg width="26" height="10"><line x1="1" y1="5" x2="25" y2="5" style="stroke:var(--warn);stroke-width:4"/></svg>edge that closes a cycle</span>`;
+    document.querySelectorAll('[data-alg]').forEach(b => b.setAttribute('aria-pressed', b.dataset.alg === st.alg));
+    show(0);
+  }
+  function show(i) {
+    st.i = Math.max(0, Math.min(st.steps.length - 1, i));
+    const s = st.steps[st.i];
+    const nodeCls = {};
+    for (const v of ORDER) nodeCls[v] = s.nodeCls[v] === 'white' ? 'white' : s.nodeCls[v];
+    draw(st.g, { ...s, nodeCls });
+    $('s-box').innerHTML = s.box.length ? s.box.map(v => `<span class="chip">${v}</span>`).join('') : '<span class="none">empty</span>';
+    $('s-out').innerHTML = s.out.length ? s.out.map(v => `<span class="chip out">${v}</span>`).join('') : '<span class="none">nothing yet</span>';
+    $('s-text').innerHTML = s.msg;
+    $('s-count').textContent = `step ${st.i + 1} of ${st.steps.length}`;
+    [...$('s-code').children].forEach((el, k) => el.classList.toggle('hl', s.line !== '' && CODE[st.alg][k][0] === s.line));
+    $('s-back').disabled = st.i === 0;
+    $('s-reset').disabled = st.i === 0;
+    $('s-next').disabled = st.i === st.steps.length - 1;
+    if (st.i === st.steps.length - 1) stop();
+  }
+  function stop() { clearInterval(st.timer); st.timer = null; $('s-play').textContent = '▶ Play'; }
+  $('s-play').addEventListener('click', () => {
+    if (st.timer) return stop();
+    if (st.i === st.steps.length - 1) show(0);
+    $('s-play').textContent = '❚❚ Pause';
+    st.timer = setInterval(() => show(st.i + 1), 1100);
+  });
+  $('s-next').addEventListener('click', () => { stop(); show(st.i + 1); });
+  $('s-back').addEventListener('click', () => { stop(); show(st.i - 1); });
+  $('s-reset').addEventListener('click', () => { stop(); show(0); });
+  document.querySelectorAll('[data-alg]').forEach(b => b.addEventListener('click', () => { st.alg = b.dataset.alg; load(); }));
+  $('cycle').addEventListener('change', load);
+  document.addEventListener('keydown', e => {
+    if (e.target.closest('input, select, textarea') || e.metaKey || e.ctrlKey || e.altKey) return;
+    const r = $('s-graph').getBoundingClientRect();
+    if (r.bottom < 0 || r.top > innerHeight) return;
+    if (e.key === 'ArrowRight') { stop(); show(st.i + 1); e.preventDefault(); }
+    if (e.key === 'ArrowLeft') { stop(); show(st.i - 1); e.preventDefault(); }
+  });
+  load();
+  </script>
+</body>
+</html>
