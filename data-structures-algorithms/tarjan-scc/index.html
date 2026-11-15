@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="../../style.css">
   <style>
     .playground {
-      width: min(1100px, calc(100vw - 32px));
+      width: min(1320px, calc(100vw - 32px));
       margin: 1.6em 0 0;
       position: relative;
       left: 50%;
@@ -22,9 +22,31 @@
       font-size: 0.75rem; text-transform: uppercase; letter-spacing: .08em;
       color: var(--muted); margin: 0 0 8px; font-weight: 600;
     }
-    .grid-top { display: grid; grid-template-columns: 2.2fr 1fr; gap: 14px; }
-    .grid-bottom { display: grid; grid-template-columns: 1.3fr 1fr; gap: 14px; margin-top: 14px; }
-    @media (max-width: 820px) { .grid-top, .grid-bottom { grid-template-columns: 1fr; } }
+    /* Wide: graph | pseudocode | sidebar. Medium: graph | pseudocode, sidebar
+       as a row below. Narrow: everything stacked. */
+    .layout {
+      display: grid; gap: 14px; align-items: start;
+      grid-template-columns: minmax(0, 1.75fr) minmax(300px, 1fr) 200px;
+    }
+    .col-main, .col-side { display: grid; gap: 14px; align-content: start; min-width: 0; }
+    .col-code { position: sticky; top: 12px; min-width: 0; }
+    @media (max-width: 1180px) {
+      .layout { grid-template-columns: minmax(0, 1.6fr) minmax(290px, 1fr); }
+      .col-side { grid-column: 1 / -1; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    }
+    @media (max-width: 760px) {
+      .layout { grid-template-columns: 1fr; }
+      .col-code { position: static; }
+      .col-side { grid-template-columns: 1fr 1fr; }
+    }
+
+    .counter { font-size: 1.05rem; }
+    .counter b { font-size: 1.6rem; font-variant-numeric: tabular-nums; display: inline-block; padding: 0 6px; border-radius: 6px; }
+    .counter b.bump { animation: bump 1.2s ease-out; }
+    @keyframes bump { 0%, 30% { background: var(--fresh); } 100% { background: transparent; } }
+    .counter-note { margin: 2px 0 0; color: var(--muted); font-size: 0.82rem; }
+    .vars { font-family: var(--mono); font-size: 0.85rem; margin: -2px 0 8px; min-height: 1.4em; color: var(--muted); }
+    .vars b { color: var(--text); }
 
     /* ---------- Toolbar ---------- */
     .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
@@ -59,7 +81,6 @@
     .legend svg { flex: none; }
 
     /* ---------- Side panels ---------- */
-    .side { display: grid; gap: 14px; align-content: start; }
     .stack-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; min-height: 2em; }
     .stack-list li {
       font-weight: 700; padding: 3px 10px; border-radius: 6px;
@@ -137,11 +158,12 @@
     <p>The key moment comes when the DFS finishes a vertex <code>v</code> and finds <code>low[v] == index[v]</code>. Nothing reachable from <code>v</code> leads back to anything earlier, so <code>v</code> is the first-visited vertex, the <strong>root</strong>, of its component. Everything above <code>v</code> on the stack is in its component, so the algorithm pops them all off as one SCC.</p>
 
     <h2>Step through it</h2>
-    <p>Use <strong>Next</strong> and <strong>Back</strong> (or the ← and → keys) to step through the algorithm, or press <strong>Play</strong>. The numbers under each vertex are <code>index / low</code>. Try the other example graphs too. In the DAG, every vertex is its own component.</p>
+    <p>Use <strong>Next</strong> and <strong>Back</strong> (or the ← and → keys) to step through the algorithm, or press <strong>Play</strong>. The numbers under each vertex are <code>index / low</code>, and the pseudocode beside the graph highlights the line being run, along with the current <code>v</code> and <code>w</code>. Try the other example graphs too. In the DAG, every vertex is its own component.</p>
   </main>
 
   <section class="playground" aria-label="Step-by-step visualizer for Tarjan's algorithm">
-    <div class="grid-top">
+    <div class="layout">
+      <div class="col-main">
       <div class="panel">
         <div class="toolbar">
           <label>Graph
@@ -170,8 +192,26 @@
           <span><svg width="26" height="10"><line x1="1" y1="5" x2="25" y2="5" style="stroke:var(--border);stroke-width:2"/></svg>ignored edge</span>
         </div>
       </div>
+      <div class="panel">
+        <h3>What's happening <span class="stepcount" id="stepcount" style="float:right"></span></h3>
+        <div class="narration" id="narration" aria-live="polite"></div>
+      </div>
+      </div>
 
-      <div class="side">
+      <div class="col-code">
+        <div class="panel">
+          <h3>Pseudocode</h3>
+          <div class="vars" id="vars" aria-live="polite"></div>
+          <pre class="code" id="code"></pre>
+        </div>
+      </div>
+
+      <div class="col-side">
+        <div class="panel">
+          <h3>Counter</h3>
+          <div class="counter"><code>counter</code> = <b id="counter"></b></div>
+          <p class="counter-note">the next index to hand out</p>
+        </div>
         <div class="panel">
           <h3>Stack (top first)</h3>
           <ul class="stack-list" id="stack"></ul>
@@ -184,17 +224,6 @@
           <h3>Components found</h3>
           <ul class="scc-list" id="sccs"></ul>
         </div>
-      </div>
-    </div>
-
-    <div class="grid-bottom">
-      <div class="panel">
-        <h3>What's happening <span class="stepcount" id="stepcount" style="float:right"></span></h3>
-        <div class="narration" id="narration" aria-live="polite"></div>
-      </div>
-      <div class="panel">
-        <h3>Pseudocode</h3>
-        <pre class="code" id="code"></pre>
       </div>
     </div>
   </section>
@@ -314,7 +343,7 @@ func TarjanSCC(graph [][]int) [][]int {
     let counter = 0;
     const steps = [];
     const snap = (line, msg, extra = {}) => steps.push({
-      line, msg,
+      line, msg, counter,
       index: { ...index }, low: { ...low }, stack: [...stack],
       sccs: sccs.map(s => [...s]), sccOf: { ...sccOf }, edgeKind: { ...edgeKind },
       call: [...call], cur: extra.focus ?? call.at(-1) ?? null,
@@ -389,7 +418,7 @@ func TarjanSCC(graph [][]int) [][]int {
     ['after', '      low[v] = min(low[v], low[w])'],
     ['onstack', '    else if w is on the stack:'],
     ['onstack', '      low[v] = min(low[v], index[w])'],
-    ['ignore', '    else: ignore (w is in a finished SCC)'],
+    ['ignore', '    else: ignore (finished SCC)'],
     ['root', '  if low[v] == index[v]:'],
     ['root', '    pop down to v → one new SCC'],
     ['return', '  (otherwise v stays on the stack)'],
@@ -479,6 +508,20 @@ func TarjanSCC(graph [][]int) [][]int {
           return `<li><span class="num">#${k + 1}</span><span class="swatch" style="background:${col.fill};border-color:${col.stroke}"></span>{${c.join(', ')}}</li>`;
         }).join('')
       : '<li class="none">none yet</li>';
+
+    const counterEl = $('counter');
+    counterEl.textContent = s.counter;
+    counterEl.classList.remove('bump');
+    if (step > 0 && trace.steps[step - 1].counter !== s.counter) {
+      void counterEl.offsetWidth;   // restart the animation
+      counterEl.classList.add('bump');
+    }
+
+    // Current variables, to match against the highlighted pseudocode line.
+    const w = s.edge ? s.edge.split('>')[1] : null;
+    $('vars').innerHTML = s.cur == null
+      ? 'no vertex in progress'
+      : `v = <b>${s.cur}</b>` + (w ? ` &nbsp; w = <b>${w}</b>` : '');
 
     $('narration').innerHTML = s.msg;
     $('stepcount').textContent = `step ${step + 1} of ${trace.steps.length}`;
