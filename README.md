@@ -25,6 +25,8 @@ style.css                       shared styles
 
 Each explainer is plain HTML/CSS/JS with no build step. To add one, create its folder and `index.html`, then add an entry to that section in `catalog.json`. To add a section, add it to `catalog.json` and copy one of the existing section pages, changing the section id.
 
+`drake/` is a photo-only section: its catalog entry has an `image` instead of explainers.
+
 `add-wins-set/` at the root is a redirect left in place so the old link keeps working.
 
 ## How the hosting works

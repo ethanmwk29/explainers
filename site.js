@@ -37,8 +37,14 @@ function showError(container, err) {
 async function renderHome(container) {
   try {
     const catalog = await loadCatalog('');
-    container.replaceChildren(...catalog.map(section =>
-      el('li', { class: 'section-card' },
+    container.replaceChildren(...catalog.map(section => section.image
+      // A section that's just a photo: show it, linked to its page.
+      ? el('li', { class: 'section-card' },
+          el('div', { class: 'section-card-head' },
+            el('h2', {}, el('a', { href: `${section.id}/` }, section.title))),
+          el('a', { href: `${section.id}/` },
+            el('img', { class: 'section-photo', src: section.image, alt: section.imageAlt || '', width: '208', height: '208', loading: 'lazy' })))
+      : el('li', { class: 'section-card' },
         el('div', { class: 'section-card-head' },
           el('h2', {}, el('a', { href: `${section.id}/` }, section.title)),
           el('span', { class: 'count' }, plural(section.explainers.length, 'explainer'))),

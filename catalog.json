@@ -32,5 +32,12 @@
         "blurb": "Split a directed graph into strongly connected components with a single depth-first search, step by step."
       }
     ]
+  },
+  {
+    "id": "drake",
+    "title": "Drake",
+    "image": "drake/drake.webp",
+    "imageAlt": "Photo of Drake",
+    "explainers": []
   }
 ]
