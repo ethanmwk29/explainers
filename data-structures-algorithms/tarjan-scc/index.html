@@ -5,7 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Tarjan's SCC Algorithm</title>
   <meta name="description" content="An interactive, step-by-step explainer of Tarjan's strongly connected components algorithm.">
-  <link rel="stylesheet" href="../../style.css">
+  <link rel="stylesheet" href="../../style.css?v=2">
+  <script src="../../theme.js"></script>
   <style>
     .playground {
       width: min(1320px, calc(100vw - 32px));
@@ -334,7 +335,10 @@ func TarjanSCC(graph [][]int) [][]int {
 
   <script>
   const $ = id => document.getElementById(id);
-  const darkQuery = matchMedia('(prefers-color-scheme: dark)');
+  // Ask theme.js (respects the toggle); fall back to the OS setting.
+  const darkQuery = window.Theme
+    ? { get matches() { return Theme.isDark(); }, addEventListener: (_, fn) => Theme.onChange(fn) }
+    : matchMedia('(prefers-color-scheme: dark)');
 
   // ---------- Example graphs ----------
   const PRESETS = {

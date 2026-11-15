@@ -5,7 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Scuttlebutt Gossip</title>
   <meta name="description" content="An interactive explainer of Scuttlebutt reconciliation and flow control for anti-entropy gossip protocols.">
-  <link rel="stylesheet" href="../../style.css">
+  <link rel="stylesheet" href="../../style.css?v=2">
+  <script src="../../theme.js"></script>
   <style>
     :root {
       --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100;
@@ -16,6 +17,10 @@
         --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
         --grid: #2c2a27;
       }
+    }
+    :root[data-theme="dark"] {
+      --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
+      --grid: #2c2a27;
     }
 
     .wide {

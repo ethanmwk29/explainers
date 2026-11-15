@@ -5,7 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Union Find</title>
   <meta name="description" content="An interactive explainer of the union-find (disjoint set) data structure.">
-  <link rel="stylesheet" href="../../style.css">
+  <link rel="stylesheet" href="../../style.css?v=2">
+  <script src="../../theme.js"></script>
   <style>
     .playground {
       width: min(1040px, calc(100vw - 32px));
@@ -232,7 +233,10 @@ func (uf *UnionFind) Union(a, b int) bool {
   const $ = id => document.getElementById(id);
   const sleep = ms => new Promise(r => setTimeout(r, ms));
   const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
-  const darkQuery = matchMedia('(prefers-color-scheme: dark)');
+  // Ask theme.js (respects the toggle); fall back to the OS setting.
+  const darkQuery = window.Theme
+    ? { get matches() { return Theme.isDark(); }, addEventListener: (_, fn) => Theme.onChange(fn) }
+    : matchMedia('(prefers-color-scheme: dark)');
 
   // ---------- State ----------
   let parent, size, entries, lastHops, hotPath, fresh, selected;

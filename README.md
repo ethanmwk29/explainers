@@ -18,7 +18,8 @@ Code examples on the explainer pages are written in Go.
 index.html                      home page: lists every section
 catalog.json                    the list of sections + explainers (home and section pages are built from it)
 site.js                         renders the home and section pages from catalog.json
-style.css                       shared styles
+style.css                       shared styles, including light and dark color tokens
+theme.js                        theme toggle (Auto / Light / Dark) loaded in every page's <head>
 <section>/index.html            a section page, e.g. distributed-systems/
 <section>/<explainer>/index.html  one explainer, e.g. distributed-systems/add-wins-set/
 ```
