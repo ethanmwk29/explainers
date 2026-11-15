@@ -8,6 +8,11 @@
         "slug": "add-wins-set",
         "title": "The add-wins set",
         "blurb": "How a CRDT lets two offline replicas edit the same set and still agree, and why adds beat removes."
+      },
+      {
+        "slug": "scuttlebutt",
+        "title": "Scuttlebutt gossip",
+        "blurb": "How gossip protocols reconcile state efficiently under limited bandwidth, and how flow control keeps them from falling behind."
       }
     ]
   },

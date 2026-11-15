@@ -1,0 +1,931 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Scuttlebutt Gossip</title>
+  <meta name="description" content="An interactive explainer of Scuttlebutt reconciliation and flow control for anti-entropy gossip protocols.">
+  <link rel="stylesheet" href="../../style.css">
+  <style>
+    :root {
+      --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100;
+      --grid: #e9e6df;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
+        --grid: #2c2a27;
+      }
+    }
+
+    .wide {
+      width: min(1100px, calc(100vw - 32px));
+      margin: 1.6em 0 0;
+      position: relative;
+      left: 50%;
+      transform: translateX(-50%);
+    }
+    .panel {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 16px 18px; min-width: 0;
+    }
+    .panel h3 {
+      font-size: 0.75rem; text-transform: uppercase; letter-spacing: .08em;
+      color: var(--muted); margin: 0 0 10px; font-weight: 600;
+    }
+    .toolbar { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
+    .toolbar label { font-size: 0.9rem; color: var(--muted); display: inline-flex; gap: 6px; align-items: center; }
+    .toolbar select, .toolbar input[type=range] { font: inherit; font-size: 0.92rem; }
+    .toolbar select {
+      padding: 0.3em 0.45em; border-radius: 8px; border: 1px solid var(--border);
+      background: var(--bg); color: var(--text);
+    }
+    .toolbar input[type=range] { accent-color: var(--accent); width: 120px; }
+    .toolbar output { font-variant-numeric: tabular-nums; color: var(--text); min-width: 2.2em; display: inline-block; }
+    .toolbar .spacer { flex: 1; }
+    .note { font-size: 0.88rem; color: var(--muted); margin: 10px 0 0; }
+
+    /* ---------- Mini playground: participant cards ---------- */
+    .nodes { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 14px 0; }
+    @media (max-width: 900px) { .nodes { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    @media (max-width: 480px) { .nodes { grid-template-columns: 1fr; } }
+    .node { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; }
+    .node.involved { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+    .node h4 { margin: 0 0 8px; font-size: 1rem; display: flex; justify-content: space-between; align-items: baseline; }
+    .node h4 small { font-weight: 400; color: var(--muted); font-size: 0.78rem; }
+    table.state { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: 0.9rem; }
+    .state th { font-weight: 500; color: var(--muted); font-size: 0.78rem; padding: 2px 4px; text-align: center; }
+    .state th[scope=row] { text-align: left; color: var(--text); font-weight: 600; font-size: 0.85rem; }
+    .state td { text-align: center; padding: 2px; }
+    .state td.max { color: var(--muted); border-left: 1px solid var(--border); font-weight: 600; }
+    .state .cell {
+      display: inline-block; min-width: 2em; padding: 2px 4px; border-radius: 5px;
+      border: 1px solid transparent; font: inherit;
+    }
+    .state .cell.stale { color: var(--muted); border: 1px dashed var(--muted); }
+    .state .cell.bottom { color: var(--muted); }
+    .state tr.own th { color: var(--accent); }
+    .state button.cell {
+      background: color-mix(in srgb, var(--accent) 10%, transparent); border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+      cursor: pointer; font-weight: 600; color: var(--text);
+    }
+    .state button.cell:hover { border-color: var(--accent); }
+    .state .fresh { animation: flash 1.6s ease-out; }
+    @keyframes flash { 0%, 30% { background: var(--fresh); } 100% { background: transparent; } }
+    .state button.cell.fresh { animation: flash 1.6s ease-out; }
+
+    /* ---------- Exchange panel ---------- */
+    .exchange { font-size: 0.95rem; min-height: 6em; }
+    .exchange .row { display: grid; grid-template-columns: 7.5em 1fr; gap: 10px; padding: 7px 0; border-top: 1px solid var(--border); align-items: start; }
+    .exchange .row:first-of-type { border-top: none; }
+    .exchange .lbl { color: var(--muted); font-size: 0.82rem; font-weight: 600; padding-top: 2px; }
+    .exchange p { margin: 0 0 4px; }
+    .chip {
+      display: inline-block; font-family: var(--mono); font-size: 0.8rem; padding: 1px 7px; margin: 2px 4px 2px 0;
+      border-radius: 5px; background: var(--surface-2); border: 1px solid var(--border);
+    }
+    .chip.held { opacity: 0.55; border-style: dashed; text-decoration: line-through; }
+    .digest { font-family: var(--mono); font-size: 0.85rem; }
+
+    .below { display: grid; grid-template-columns: 3fr 2fr; gap: 14px; margin-top: 14px; }
+    @media (max-width: 820px) { .below { grid-template-columns: 1fr; } }
+    .tour-text { min-height: 6em; margin-bottom: 12px; }
+    .tour-text p:last-child { margin-bottom: 0; }
+    .tour-controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .tour-step { color: var(--muted); font-size: 0.85rem; margin-left: auto; }
+    .stat { font-size: 0.95rem; }
+    .stat b { font-variant-numeric: tabular-nums; font-size: 1.3rem; }
+
+    /* ---------- Charts ---------- */
+    .chart-legend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 0.85rem; margin: 12px 0 4px; }
+    .chart-legend span { display: inline-flex; align-items: center; gap: 6px; }
+    .chart-legend i { width: 14px; height: 3px; border-radius: 2px; display: inline-block; }
+    .chart-box { position: relative; }
+    .chart { display: block; width: 100%; height: auto; touch-action: pan-y; }
+    .chart text { font-family: var(--sans); font-size: 12px; fill: var(--muted); font-variant-numeric: tabular-nums; }
+    .chart .end-label { font-size: 12px; fill: var(--text); }
+    .chart .gridline { stroke: var(--grid); stroke-width: 1; }
+    .chart .axis { stroke: var(--border); stroke-width: 1; }
+    .chart .series { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+    .chart .xhair { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 3; }
+    .chart .dot { stroke: var(--surface); stroke-width: 2; }
+    .tip {
+      position: absolute; top: 8px; pointer-events: none; background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; padding: 8px 10px; font-size: 0.82rem; box-shadow: 0 4px 14px rgb(0 0 0 / 0.12); min-width: 170px;
+    }
+    .tip .t { color: var(--muted); margin-bottom: 4px; }
+    .tip .r { display: flex; align-items: center; gap: 6px; justify-content: space-between; }
+    .tip .r span { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
+    .tip .r i { width: 10px; height: 3px; border-radius: 2px; display: inline-block; }
+    .tip .r b { color: var(--text); font-variant-numeric: tabular-nums; }
+    .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+    .seg button { border: none; border-radius: 0; background: var(--surface); font-size: 0.88rem; }
+    .seg button + button { border-left: 1px solid var(--border); }
+    .seg button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
+    table.now { border-collapse: collapse; font-size: 0.88rem; margin-top: 10px; width: 100%; }
+    .now caption { text-align: left; color: var(--muted); font-size: 0.8rem; padding-bottom: 4px; }
+    .now th, .now td { text-align: right; padding: 4px 8px; border-bottom: 1px solid var(--border); font-variant-numeric: tabular-nums; }
+    .now th:first-child, .now td:first-child { text-align: left; }
+    .now th { color: var(--muted); font-weight: 500; }
+    .now td i { width: 10px; height: 3px; border-radius: 2px; display: inline-block; margin-right: 6px; vertical-align: middle; }
+    .load-facts { font-size: 0.9rem; color: var(--muted); margin-top: 8px; }
+    .load-facts b { color: var(--text); font-variant-numeric: tabular-nums; }
+    .load-facts .over { color: var(--warn); font-weight: 600; }
+
+    /* ---------- Prose ---------- */
+    .rules { padding-left: 1.2em; }
+    .rules li { margin-bottom: 0.5em; }
+    main h3 { margin: 1.8em 0 0.4em; font-size: 1.15rem; }
+    pre.snippet {
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 14px 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.5;
+    }
+    pre.snippet code { background: none; padding: 0; }
+    .formula { font-family: var(--mono); font-size: 0.9rem; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; margin: 0 0 1em; overflow-x: auto; }
+    .cite { font-size: 0.92rem; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <main>
+    <nav class="crumbs"><a href="../../">Explainers</a><span>/</span><a href="../">Distributed Systems</a></nav>
+    <h1>Scuttlebutt: gossip that keeps up</h1>
+    <p class="lede">Gossip protocols spread state through a cluster with no coordinator, but they can only carry so much. Scuttlebutt is a way to spend that limited bandwidth on the updates that matter, plus a way to stop participants from producing more than the cluster can carry.</p>
+    <p class="cite">Based on <a href="https://www.cs.cornell.edu/home/rvr/papers/flowgossip.pdf">"Efficient Reconciliation and Flow Control for Anti-Entropy Protocols"</a> by Robbert van Renesse, Dan Dumitriu, Valient Gough and Chris Thomas (Amazon.com; LADIS 2008).</p>
+
+    <h2>Gossip, briefly</h2>
+    <p>Imagine a cluster of machines, called <strong>participants</strong>, where each one publishes some state about itself: its load, its health, which data it holds. Everyone wants an up-to-date copy of everyone else's state.</p>
+    <p>In an <strong>anti-entropy</strong> gossip protocol, every participant periodically picks a random peer and the two <em>reconcile</em>: each sends the other whatever newer information it has. Updates spread like an epidemic, reaching all <code>N</code> participants in roughly <code>log N</code> rounds. Lost messages and crashed participants barely slow it down.</p>
+
+    <h2>The catch: gossip has a capacity</h2>
+    <p>To keep gossip predictable and non-invasive, the designer fixes both how often participants gossip and how big a gossip message can be, for example one UDP packet. The paper calls that limit the <strong>MTU</strong>: a gossip message carries at most <code>mtu</code> updates, called <strong>deltas</strong>.</p>
+    <p>That makes the gossip channel a pipe with a fixed width. If participants produce updates faster than the pipe can carry them, a backlog builds up and, in the paper's words, latency "may grow without bounds." The paper makes two contributions for this situation:</p>
+    <ul class="rules">
+      <li><strong>Scuttlebutt reconciliation:</strong> a cheap way to work out what to send, and which deltas to prioritize when they don't all fit.</li>
+      <li><strong>Flow control:</strong> a decentralized way for participants to slow down so the backlog never builds up in the first place.</li>
+    </ul>
+
+    <h2>The model</h2>
+    <p>Each participant owns a set of keys, and <strong>only the owner may update its own keys</strong>. Everyone else's copies change only through gossip. Every value carries a <strong>version number</strong>, and when two copies of the same key meet, the higher version wins.</p>
+    <p>Scuttlebutt adds one rule: <strong>when a participant updates a key, the new version must be higher than any version it has used before, for any of its keys.</strong> In effect, each participant has a single counter, and every update it makes takes the next number. No two of its keys ever share a version.</p>
+
+    <h2>Scuttlebutt in two steps</h2>
+    <p>When participants <code>p</code> and <code>q</code> gossip:</p>
+    <ol class="rules">
+      <li><strong>Swap digests.</strong> Each sends a <em>digest</em>: for every participant <code>r</code>, the highest version it holds for any of <code>r</code>'s keys. That's one number per participant, no matter how many keys each one has.</li>
+      <li><strong>Send what's newer.</strong> For each participant <code>r</code>, <code>p</code> sends every entry it holds for <code>r</code> whose version is higher than <code>q</code>'s maximum for <code>r</code>, and <code>q</code> does the same in return.</li>
+    </ol>
+    <p>Compare that with <strong>precise reconciliation</strong>, which sends exactly the entries where the peer's copy is older, key by key. To do that, the participants need to exchange a version for every key of every participant, which can be a lot of data, or compute hashes, which costs CPU. Scuttlebutt's digest is tiny by comparison.</p>
+
+    <h3>The one constraint: send in version order</h3>
+    <p>When everything doesn't fit in one message, Scuttlebutt can't send an arbitrary subset. <strong>If it leaves out a delta for participant <code>r</code>, it must also leave out every delta for <code>r</code> with a higher version.</strong> In other words, each participant's deltas go out lowest version first.</p>
+    <p>That's what makes one number per participant enough. It guarantees that, for every key of <code>r</code>, a peer either already has <code>r</code>'s current value, or <code>r</code>'s current version for that key is higher than the peer's maximum for <code>r</code>, so the next digest will ask for it. There are never gaps hiding below the maximum. As a result, if a peer's maximum for <code>r</code> equals <code>r</code>'s own maximum, the peer's copy of <code>r</code> is exactly up to date.</p>
+
+    <h2>Try it</h2>
+    <p>Four participants, P, Q, R and S, each own three keys, <code>a</code>, <code>b</code> and <code>c</code>. Each card shows the versions that participant holds for everyone's keys (values are omitted, as in the paper's figures), plus the <strong>max</strong> column, which is its digest. Click a highlighted cell in a participant's own row to update that key. Out-of-date copies have a dashed outline. The guided tour recreates the scenario from the paper's Figure 1.</p>
+  </main>
+
+  <section class="wide" aria-label="Scuttlebutt gossip playground">
+    <div class="panel">
+      <div class="toolbar">
+        <label>Gossip between
+          <select id="m-p" aria-label="First participant"></select> and
+          <select id="m-q" aria-label="Second participant"></select>
+        </label>
+        <button class="primary" id="m-gossip">Gossip</button>
+        <button id="m-rand-update" title="Each participant updates one random key">Everyone updates a key</button>
+        <button id="m-rand-round" title="Each participant gossips with a random peer">Random gossip round</button>
+        <span class="spacer"></span>
+        <label>MTU <input type="range" id="m-mtu" min="1" max="12" value="12"><output id="m-mtu-out">12</output></label>
+        <label>Ordering
+          <select id="m-order">
+            <option value="scuttle-depth">scuttle-depth</option>
+            <option value="scuttle-breadth">scuttle-breadth</option>
+          </select>
+        </label>
+        <button id="m-reset">Reset</button>
+      </div>
+      <div class="nodes" id="m-nodes"></div>
+      <h3>Last exchange</h3>
+      <div class="exchange" id="m-exchange"></div>
+    </div>
+
+    <div class="below">
+      <div class="panel">
+        <h3>Guided tour: the paper's Figure 1</h3>
+        <div class="tour-text" id="tour-text"></div>
+        <div class="tour-controls">
+          <button id="tour-back" hidden>← Back</button>
+          <button class="primary" id="tour-next">Start the tour</button>
+          <span class="tour-step" id="tour-step"></span>
+        </div>
+      </div>
+      <div class="panel">
+        <h3>Cluster status</h3>
+        <p class="stat">Out-of-date copies: <b id="m-stale"></b></p>
+        <p class="note">A copy is out of date when it differs from the owner's current version. Gossip until this reaches 0 and every digest agrees.</p>
+      </div>
+    </div>
+  </section>
+
+  <main style="padding-top: 0">
+    <h3>A surprising property</h3>
+    <p>Step 6 of the tour shows something odd. P and Q have the same maximum for R, so they exchange nothing about R, even though Q holds newer versions of <code>b</code> and <code>c</code> than P does. A Scuttlebutt exchange doesn't try to remove every difference between two participants, even when there's room in the message.</p>
+    <p>That turns out to be a feature. Q's newer copies are <em>already obsolete</em>: R has since moved on to even newer versions. Sending them would just mean reconciling those keys again later. Skipping them leaves room in the message for deltas that are actually current.</p>
+
+    <h2>Choosing what fits</h2>
+    <p>When the deltas don't fit in one message, something has to pick which ones go first. Any ordering works as long as each participant's deltas stay in version order, but the choice matters a lot for performance. The paper compares four:</p>
+    <ul class="rules">
+      <li><strong>scuttle-breadth</strong> tries to be fair: it includes deltas from as many different participants as possible, taking each participant's lowest version first, then each one's second-lowest, and so on. Ties go to a fresh random order of participants for every message, to avoid long-term bias.</li>
+      <li><strong>scuttle-depth</strong> prioritizes whoever is <em>most behind</em>: the participants with the most outstanding deltas go first, in version order, again with random tie-breaking. The authors call it "the best we encountered from various trials."</li>
+      <li><strong>precise-newest</strong> (a baseline) uses precise reconciliation and sends the most recent updates first. It can <em>starve</em> older updates, so they never get a chance to spread.</li>
+      <li><strong>precise-oldest</strong> (a baseline) sends the most out-of-date deltas first.</li>
+    </ul>
+    <p>Both precise orderings would need synchronized clocks and timestamps on every update to implement for real. The simulation below can cheat and use its own clock.</p>
+
+    <h2>Under load</h2>
+    <p>This simulation runs four identical clusters side by side, one per ordering, each with <strong>32 participants owning 16 keys each</strong>. They all receive the same stream of updates, and every participant gossips once per round with a random peer. Raise the update rate or lower the MTU to push the clusters into overload, or press <strong>Run the paper's experiment</strong>. It follows the schedule from the paper (rate 1, doubled at round 25, restored at round 75, stopped at round 120), scaled down from the paper's 128 participants and 64 keys.</p>
+  </main>
+
+  <section class="wide" aria-label="Simulation comparing reconciliation orderings under load">
+    <div class="panel">
+      <div class="toolbar">
+        <button class="primary" id="l-play">▶ Run</button>
+        <button id="l-paper">Run the paper's experiment</button>
+        <button id="l-reset">Reset</button>
+        <span class="spacer"></span>
+        <label>Updates per participant per round <input type="range" id="l-rate" min="0" max="3" step="0.25" value="1"><output id="l-rate-out">1</output></label>
+        <label>MTU <input type="range" id="l-mtu" min="4" max="48" step="1" value="20"><output id="l-mtu-out">20</output></label>
+      </div>
+      <div class="load-facts" id="l-facts"></div>
+      <div class="toolbar" style="margin-top:12px">
+        <div class="seg" role="group" aria-label="Metric" id="l-seg">
+          <button data-metric="stale" aria-pressed="true">Out-of-date copies</button>
+          <button data-metric="maxStale" aria-pressed="false">Max staleness</button>
+        </div>
+        <span class="note" id="l-metric-note" style="margin:0"></span>
+      </div>
+      <div id="l-chart"></div>
+      <table class="now" id="l-table"></table>
+    </div>
+  </section>
+
+  <main style="padding-top: 0">
+    <p>The pattern matches the paper's results. Under overload, <strong>precise-newest</strong> keeps the fewest out-of-date copies but has the worst maximum staleness, because some old updates starve. <strong>precise-oldest</strong> keeps staleness lower but accumulates the most out-of-date copies, so it recovers slowly. <strong>scuttle-breadth</strong> is disappointing, which shows how much the ordering matters. <strong>scuttle-depth</strong> scores well on both metrics. In every variant, once updates stop, the cluster converges. As the paper puts it, though, "no matter how good the reconciliation protocol, overload remains a problem."</p>
+
+    <h2>Flow control</h2>
+    <p>Good reconciliation makes the best of a backlog. Flow control prevents one. The goal is for each participant to find, on its own, the fastest rate at which it can publish updates without creating a backlog, while sharing capacity <strong>fairly</strong> among everyone who wants to publish. There's no central coordinator, so it has to be built from local decisions.</p>
+    <p>Each participant <code>p</code> has a <strong>desired rate</strong> <code>ρp</code> (how fast updates become available) and a <strong>maximum rate</strong> <code>τp</code> that it never exceeds and adjusts over time. Two mechanisms adjust <code>τ</code>:</p>
+
+    <h3>1. Local adaptation (AIMD)</h3>
+    <p>This works like TCP's congestion control: <em>additive increase, multiplicative decrease</em>. The overflow signal is a gossip message that's completely full. A single full message isn't a reliable signal, so the rule looks for a streak:</p>
+    <ul class="rules">
+      <li>If, for <code>φ1</code> exchanges in a row, either delta set (sent or received) is larger than <code>mtu</code>: <code>τp = α · τp</code>.</li>
+      <li>If, for <code>φ2</code> exchanges in a row, both delta sets are smaller than <code>mtu</code>: <code>τp = min(τp + β, mtu)</code>.</li>
+    </ul>
+    <p>The paper's experiments use <code>φ1 = φ2 = 3</code>, <code>α = 0.75</code> and <code>β = 0.2</code>.</p>
+
+    <h3>2. Spreading capacity fairly</h3>
+    <p>AIMD alone can be unfair: some participants back off while others speed up. To fix that, participants piggyback their <code>ρ</code> and <code>τ</code> on gossip and rebalance with every exchange. Let <code>T = τp + τq</code>:</p>
+    <ul class="rules">
+      <li><strong>Both fit</strong> (<code>ρp + ρq ≤ T</code>): each gets its desired rate plus half the spare capacity, <code>τp = ρp + (T − ρp − ρq)/2</code>, and likewise for <code>q</code>.</li>
+      <li><strong>Both want more than half</strong> (<code>ρp ≥ T/2</code> and <code>ρq ≥ T/2</code>): split evenly, <code>τp = τq = T/2</code>.</li>
+      <li><strong>One wants less than half</strong> (say <code>ρp &lt; T/2</code>): <code>p</code> gets what it wants, <code>τp = ρp</code>, and <code>q</code> gets the rest, <code>τq = T − ρp</code>.</li>
+    </ul>
+    <p>In all three cases <code>τp + τq</code> stays the same. No capacity is created or lost, it just gets shared more evenly.</p>
+
+    <h3>See it work</h3>
+    <p>Two clusters, both using scuttle-depth, where every participant wants to publish <strong>8 updates per round</strong>, far more than the network can carry. One cluster has flow control and one doesn't. Let it run, then drop the MTU partway through, like the paper's experiment that halves it to simulate a sudden network load increase.</p>
+  </main>
+
+  <section class="wide" aria-label="Simulation comparing flow control on and off">
+    <div class="panel">
+      <div class="toolbar">
+        <button class="primary" id="f-play">▶ Run</button>
+        <button id="f-halve">Halve the MTU</button>
+        <button id="f-reset">Reset</button>
+        <span class="spacer"></span>
+        <label>MTU <input type="range" id="f-mtu" min="4" max="48" step="1" value="24"><output id="f-mtu-out">24</output></label>
+      </div>
+      <div class="toolbar" style="margin-top:12px">
+        <div class="seg" role="group" aria-label="Metric" id="f-seg">
+          <button data-metric="maxStale" aria-pressed="true">Max staleness</button>
+          <button data-metric="rate" aria-pressed="false">Update rate</button>
+          <button data-metric="stale" aria-pressed="false">Out-of-date copies</button>
+        </div>
+        <span class="note" id="f-metric-note" style="margin:0"></span>
+      </div>
+      <div id="f-chart"></div>
+      <table class="now" id="f-table"></table>
+    </div>
+  </section>
+
+  <main style="padding-top: 0">
+    <p>Without flow control, staleness climbs steadily: the backlog never drains. With it, each participant's rate creeps up until the messages start overflowing, then settles near what the network can actually carry. When the MTU drops, the rate quickly falls to a level the smaller messages can support, and staleness stays bounded. The paper reports the same behaviour, and notes that the combination of Scuttlebutt and flow control "appears particularly effective."</p>
+
+    <h2>The code</h2>
+    <p>Here's a Scuttlebutt participant in Go, with digests, version-ordered deltas and scuttle-depth prioritization. To keep it short, it leaves out the network layer, flow control and failure handling.</p>
+<pre class="snippet"><code>import (
+	"math/rand"
+	"sort"
+)
+
+// Delta is one (participant, key, value, version) tuple sent during gossip.
+type Delta struct {
+	Owner   string
+	Key     string
+	Value   string
+	Version int
+}
+
+type entry struct {
+	value   string
+	version int
+}
+
+// Node is one participant. It owns its own keys and holds a replica of
+// every other participant's keys.
+type Node struct {
+	id    string
+	state map[string]map[string]entry // owner -&gt; key -&gt; entry
+	max   map[string]int              // owner -&gt; highest version held
+}
+
+func NewNode(id string) *Node {
+	return &amp;Node{id: id, state: map[string]map[string]entry{}, max: map[string]int{}}
+}
+
+// Set updates one of this node's own keys. The new version is higher than
+// any version the node has used before, for any key.
+func (n *Node) Set(key, value string) {
+	n.put(n.id, key, entry{value, n.max[n.id] + 1})
+}
+
+func (n *Node) put(owner, key string, e entry) {
+	if n.state[owner] == nil {
+		n.state[owner] = map[string]entry{}
+	}
+	if e.version &gt; n.state[owner][key].version {
+		n.state[owner][key] = e
+	}
+	if e.version &gt; n.max[owner] {
+		n.max[owner] = e.version
+	}
+}
+
+// Digest is the highest version this node holds for each participant.
+func (n *Node) Digest() map[string]int {
+	d := make(map[string]int, len(n.max))
+	for owner, v := range n.max {
+		d[owner] = v
+	}
+	return d
+}
+
+// DeltasFor returns the entries a peer with the given digest is missing:
+// at most mtu of them, chosen with the scuttle-depth ordering.
+func (n *Node) DeltasFor(digest map[string]int, mtu int) []Delta {
+	byOwner := map[string][]Delta{}
+	for owner, keys := range n.state {
+		for key, e := range keys {
+			if e.version &gt; digest[owner] {
+				byOwner[owner] = append(byOwner[owner], Delta{owner, key, e.value, e.version})
+			}
+		}
+	}
+
+	owners := make([]string, 0, len(byOwner))
+	for owner, ds := range byOwner {
+		// Within a participant, always send in version order.
+		sort.Slice(ds, func(i, j int) bool { return ds[i].Version &lt; ds[j].Version })
+		owners = append(owners, owner)
+	}
+	// scuttle-depth: participants with the most outstanding deltas go first,
+	// with ties broken randomly.
+	rand.Shuffle(len(owners), func(i, j int) { owners[i], owners[j] = owners[j], owners[i] })
+	sort.SliceStable(owners, func(i, j int) bool {
+		return len(byOwner[owners[i]]) &gt; len(byOwner[owners[j]])
+	})
+
+	var out []Delta
+	for _, owner := range owners {
+		for _, d := range byOwner[owner] {
+			if len(out) == mtu {
+				return out
+			}
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
+// Apply merges received deltas, keeping whichever version is higher.
+func (n *Node) Apply(deltas []Delta) {
+	for _, d := range deltas {
+		n.put(d.Owner, d.Key, entry{d.Value, d.Version})
+	}
+}
+
+// Gossip runs one exchange between a and b: swap digests, then send each
+// other what's missing, limited to mtu deltas per message.
+func Gossip(a, b *Node, mtu int) {
+	da, db := a.Digest(), b.Digest()
+	toB, toA := a.DeltasFor(db, mtu), b.DeltasFor(da, mtu)
+	b.Apply(toB)
+	a.Apply(toA)
+}</code></pre>
+
+    <h2>Caveats</h2>
+    <ul class="rules">
+      <li><strong>Digests grow with the cluster.</strong> A digest has one entry per participant, which might not fit in a single message in a very large system. The paper suggests organizing large systems hierarchically, splitting the digest across several messages, or sending a random subset of participants each time, which still works but slows propagation.</li>
+      <li><strong>Deltas aren't all the same size.</strong> The model counts deltas, but real ones vary in size. The paper notes this "is not a major complication."</li>
+      <li><strong>Simulation, not reproduction.</strong> The charts above come from a small simulation written for this page (32 participants and 16 keys, against the paper's 128 and 64), so the shapes match the paper's results, but the numbers don't. "Max staleness" here means how long the oldest out-of-date copy has been out of date.</li>
+      <li><strong>Where you'll see it.</strong> The same "digest of max versions, then send what's newer" pattern shows up in production gossip systems, such as the cluster-membership gossip in Apache Cassandra.</li>
+    </ul>
+
+    <footer>Part of <a href="../">Distributed Systems</a> in <a href="../../">Explainers</a>.</footer>
+  </main>
+
+  <script src="sim.js"></script>
+  <script>
+  const $ = id => document.getElementById(id);
+
+  // =====================================================================
+  // Mini playground
+  // =====================================================================
+  const NAMES = ['P', 'Q', 'R', 'S'];
+  const KEYS = ['a', 'b', 'c'];
+  let mini, last, fresh, involved;
+  let miniMtu = 12, miniOrder = 'scuttle-depth';
+
+  function miniReset() {
+    mini = new Cluster({ n: 4, keys: 3, mtu: miniMtu, strategy: miniOrder, seed: 42 });
+    last = null;
+    fresh = new Set();
+    involved = [];
+  }
+
+  function miniUpdate(p, k) {
+    mini.time++;
+    mini.update(p, k);
+    fresh.add(`${p}:${p}:${k}`);
+    involved = [p];
+    last = { type: 'update', items: [[p, k, mini.maxv[p][p]]] };
+  }
+
+  function miniUpdateMany(list) {
+    const items = [];
+    for (const [p, k] of list) {
+      mini.time++;
+      mini.update(p, k);
+      fresh.add(`${p}:${p}:${k}`);
+      items.push([p, k, mini.maxv[p][p]]);
+    }
+    involved = [...new Set(list.map(([p]) => p))];
+    last = { type: 'update', items };
+  }
+
+  function miniGossip(p, q, record = true) {
+    mini.time++;
+    mini.mtu = miniMtu;
+    mini.strategy = miniOrder;
+    const dp = [...mini.maxv[p]], dq = [...mini.maxv[q]];
+    const allPQ = mini.order(mini.deltas(p, q)), allQP = mini.order(mini.deltas(q, p));
+    const sPQ = allPQ.slice(0, miniMtu), sQP = allQP.slice(0, miniMtu);
+    mini.apply(q, sPQ);
+    mini.apply(p, sQP);
+    sPQ.forEach(d => fresh.add(`${q}:${d.r}:${d.k}`));
+    sQP.forEach(d => fresh.add(`${p}:${d.r}:${d.k}`));
+    if (record) {
+      involved = [p, q];
+      last = { type: 'gossip', p, q, dp, dq, allPQ, allQP, mtu: miniMtu };
+    }
+    return { p, q, n: sPQ.length + sQP.length };
+  }
+
+  function miniRandomRound() {
+    const rng = Math.random;
+    const pairs = [];
+    for (let p = 0; p < 4; p++) {
+      let q = Math.floor(rng() * 3);
+      if (q >= p) q++;
+      pairs.push(miniGossip(p, q, false));
+    }
+    involved = [0, 1, 2, 3];
+    last = { type: 'round', pairs };
+  }
+
+  function staleCount(c) {
+    let n = 0;
+    for (let q = 0; q < c.n; q++)
+      for (let p = 0; p < c.n; p++)
+        if (p !== q) for (let k = 0; k < c.K; k++) if (c.ver[q][p * c.K + k] !== c.ver[p][p * c.K + k]) n++;
+    return n;
+  }
+
+  const chip = (d, held) => `<span class="chip${held ? ' held' : ''}" title="${NAMES[d.r]}'s key ${KEYS[d.k]}, version ${d.v}${held ? ' (didn\'t fit)' : ''}">${NAMES[d.r]}.${KEYS[d.k]}@${d.v}</span>`;
+  const digestText = d => '{ ' + d.map((v, i) => `${NAMES[i]}: ${v}`).join(', ') + ' }';
+
+  function renderMini() {
+    // Participant cards
+    const nodes = $('m-nodes');
+    nodes.innerHTML = '';
+    for (let q = 0; q < 4; q++) {
+      let rows = '';
+      for (let p = 0; p < 4; p++) {
+        let cells = '';
+        for (let k = 0; k < 3; k++) {
+          const v = mini.ver[q][p * 3 + k];
+          const truth = mini.ver[p][p * 3 + k];
+          const f = fresh.has(`${q}:${p}:${k}`) ? ' fresh' : '';
+          if (p === q) {
+            cells += `<td><button class="cell${f}" data-p="${p}" data-k="${k}" title="Update ${NAMES[p]}'s key ${KEYS[k]}" aria-label="Update ${NAMES[p]}'s key ${KEYS[k]} (currently version ${v || 'none'})">${v || '–'}</button></td>`;
+          } else {
+            const cls = v !== truth ? 'stale' : (v === 0 ? 'bottom' : '');
+            cells += `<td><span class="cell ${cls}${f}" title="${v !== truth ? `Out of date: ${NAMES[p]} is at version ${truth}` : 'Up to date'}">${v || '–'}</span></td>`;
+          }
+        }
+        rows += `<tr class="${p === q ? 'own' : ''}"><th scope="row">${NAMES[p]}</th>${cells}<td class="max">${mini.maxv[q][p]}</td></tr>`;
+      }
+      const card = document.createElement('div');
+      card.className = 'node' + (involved.includes(q) ? ' involved' : '');
+      card.innerHTML = `<h4>${NAMES[q]}<small>owns row ${NAMES[q]}</small></h4>
+        <table class="state" aria-label="Versions held by ${NAMES[q]}"><thead><tr><th></th>${KEYS.map(k => `<th scope="col">${k}</th>`).join('')}<th scope="col">max</th></tr></thead><tbody>${rows}</tbody></table>`;
+      nodes.append(card);
+    }
+    fresh.clear();
+
+    // Exchange panel
+    const ex = $('m-exchange');
+    if (!last) {
+      ex.innerHTML = '<p class="note" style="margin:0">Nothing yet. Update a key, then gossip.</p>';
+    } else if (last.type === 'update') {
+      ex.innerHTML = `<p>${last.items.map(([p, k, v]) => `<b>${NAMES[p]}</b> updated <code>${KEYS[k]}</code> with version <b>${v}</b>`).join('; ')}.</p>
+        <p class="note">Each participant has a single counter: a new version is always higher than any it has used before, for any key.</p>`;
+    } else if (last.type === 'round') {
+      ex.innerHTML = `<p>Random round: ${last.pairs.map(x => `${NAMES[x.p]}⇄${NAMES[x.q]} (${x.n} delta${x.n === 1 ? '' : 's'})`).join(', ')}.</p>
+        <p class="note">Use the Gossip button to see a single exchange in detail.</p>`;
+    } else {
+      const { p, q, dp, dq, allPQ, allQP, mtu } = last;
+      const dir = (from, to, all, dTo) => {
+        if (!all.length) return `<p><b>${NAMES[from]} → ${NAMES[to]}:</b> nothing. ${NAMES[from]} has no entry newer than ${NAMES[to]}'s maximum for any participant.</p>`;
+        const sent = all.slice(0, mtu), held = all.slice(mtu);
+        const owners = [...new Set(all.map(d => d.r))].map(r => `${NAMES[to]}'s max for ${NAMES[r]} is ${dTo[r]}`).join('; ');
+        return `<p><b>${NAMES[from]} → ${NAMES[to]}:</b> ${sent.map(d => chip(d, false)).join('')}${held.map(d => chip(d, true)).join('')}</p>
+          <p class="note" style="margin:0 0 6px">${owners}. ${held.length ? `${held.length} delta${held.length === 1 ? '' : 's'} didn't fit in the MTU of ${mtu} (crossed out); each participant's deltas are sent lowest version first.` : 'Everything fit.'}</p>`;
+      };
+      ex.innerHTML = `
+        <div class="row"><div class="lbl">1. Digests</div><div>
+          <p><b>${NAMES[p]}</b> sends <span class="digest">${digestText(dp)}</span></p>
+          <p><b>${NAMES[q]}</b> sends <span class="digest">${digestText(dq)}</span></p></div></div>
+        <div class="row"><div class="lbl">2. Deltas</div><div>
+          ${dir(p, q, allPQ, dq)}${dir(q, p, allQP, dp)}</div></div>`;
+    }
+    $('m-stale').textContent = staleCount(mini);
+  }
+
+  // Inputs
+  for (const id of ['m-p', 'm-q']) $(id).innerHTML = NAMES.map((n, i) => `<option value="${i}">${n}</option>`).join('');
+  $('m-q').value = '1';
+  $('m-nodes').addEventListener('click', e => {
+    const b = e.target.closest('button.cell');
+    if (!b) return;
+    miniUpdate(Number(b.dataset.p), Number(b.dataset.k));
+    renderMini();
+  });
+  $('m-gossip').addEventListener('click', () => {
+    const p = Number($('m-p').value), q = Number($('m-q').value);
+    if (p === q) { $('m-exchange').innerHTML = '<p class="note" style="margin:0">Pick two different participants.</p>'; return; }
+    miniGossip(p, q);
+    renderMini();
+  });
+  $('m-rand-update').addEventListener('click', () => {
+    miniUpdateMany(NAMES.map((_, p) => [p, Math.floor(Math.random() * 3)]));
+    renderMini();
+  });
+  $('m-rand-round').addEventListener('click', () => { miniRandomRound(); renderMini(); });
+  $('m-mtu').addEventListener('input', e => { miniMtu = Number(e.target.value); $('m-mtu-out').textContent = miniMtu; });
+  $('m-order').addEventListener('change', e => { miniOrder = e.target.value; });
+  $('m-reset').addEventListener('click', () => { tourStep = -1; miniReset(); renderMini(); renderTour(); });
+
+  function setMiniMtu(v) { miniMtu = v; $('m-mtu').value = v; $('m-mtu-out').textContent = v; }
+
+  // Guided tour (Figure 1). P=0, Q=1, R=2; keys a,b,c = 0,1,2.
+  const R = 2, P = 0, Q = 1;
+  const rUpdatesAll = () => miniUpdateMany([[R, 0], [R, 1], [R, 2]]);
+  const tour = [
+    {
+      text: `<p>Every key starts at version ⊥ (shown as –). We'll follow R's keys as they spread to P and Q, as in the paper's Figure 1. S just watches.</p>`,
+      run: () => { miniReset(); setMiniMtu(12); miniOrder = 'scuttle-depth'; $('m-order').value = miniOrder; },
+    },
+    {
+      text: `<p><b>R updates a, b and c.</b> R has a single counter, so they get versions 1, 2 and 3. R's maximum, its own digest entry, is now 3.</p>`,
+      run: rUpdatesAll,
+    },
+    {
+      text: `<p><b>R gossips with P, then with Q.</b> P's digest says its maximum for R is 0, so R sends every entry newer than 0. Both now hold versions 1, 2 and 3. The panel shows the second exchange.</p>`,
+      run: () => { miniGossip(R, P); miniGossip(R, Q); },
+    },
+    {
+      text: `<p><b>R updates all three keys again</b> (versions 4, 5, 6), and <b>Q gossips with R</b>, so Q catches up to 4, 5, 6. P missed this and still has 1, 2, 3.</p>`,
+      run: () => { rUpdatesAll(); miniGossip(Q, R); },
+    },
+    {
+      text: `<p><b>R updates again</b> (7, 8, 9). Now bandwidth gets tight: the <b>MTU drops to 1</b>. P gossips with R. P's max for R is 3, so R has three deltas for it (a@7, b@8 and c@9), but only one fits. Scuttlebutt must send the <b>lowest version first</b>, so only <code>a@7</code> goes through.</p><p>P now holds a=7, b=2, c=3, and its max for R is 7.</p>`,
+      run: () => { rUpdatesAll(); setMiniMtu(1); miniGossip(P, R); },
+    },
+    {
+      text: `<p><b>Q gossips with R</b>, also with an MTU of 1, and also receives just <code>a@7</code>. Q now holds a=7, b=5, c=6, so its max for R is 7 as well.</p>`,
+      run: () => miniGossip(Q, R),
+    },
+    {
+      text: `<p><b>P gossips with Q.</b> Both digests say 7 for R, so <em>nothing about R is exchanged</em>, even though Q's b@5 and c@6 are newer than P's b@2 and c@3.</p><p>That's deliberate. R is already at 8 and 9 for those keys, so Q's copies are obsolete anyway. Sending them would waste room that other participants' current deltas could use.</p>`,
+      run: () => miniGossip(P, Q),
+    },
+    {
+      text: `<p>Still safe: P's and Q's maximums (7) are below R's current versions of b and c (8 and 9), so the next exchange with R will ask for them. <b>The MTU goes back to 12</b>, and R gossips with P and then with Q. P and Q are now fully up to date with R. (S never gossiped, so its copies are still out of date. Try gossiping with S.)</p><p>The playground is yours now. Try a small MTU with several participants updating at once, and compare the two orderings.</p>`,
+      run: () => { setMiniMtu(12); miniGossip(R, P); miniGossip(R, Q); },
+    },
+  ];
+  let tourStep = -1;
+  function renderTour() {
+    const back = $('tour-back'), next = $('tour-next');
+    back.hidden = tourStep < 0;
+    back.disabled = tourStep <= 0;
+    if (tourStep < 0) {
+      next.textContent = 'Start the tour';
+      $('tour-step').textContent = '';
+      $('tour-text').innerHTML = '<p>Walk through the scenario from the paper\'s Figure 1, which shows why a Scuttlebutt exchange can leave some differences in place on purpose.</p>';
+      return;
+    }
+    $('tour-text').innerHTML = tour[tourStep].text;
+    $('tour-step').textContent = `Step ${tourStep + 1} of ${tour.length}`;
+    next.textContent = tourStep === tour.length - 1 ? 'Restart tour' : 'Next →';
+  }
+  $('tour-next').addEventListener('click', () => {
+    tourStep = tourStep >= tour.length - 1 ? 0 : tourStep + 1;
+    tour[tourStep].run();
+    renderMini(); renderTour();
+  });
+  $('tour-back').addEventListener('click', () => {
+    if (tourStep <= 0) return;
+    tourStep--;
+    for (let i = 0; i <= tourStep; i++) tour[i].run();
+    fresh.clear();
+    renderMini(); renderTour();
+  });
+
+  miniReset(); renderMini(); renderTour();
+
+  // =====================================================================
+  // Line chart (SVG): crosshair tooltip, legend, direct end labels
+  // =====================================================================
+  function makeChart(root, series, ariaLabel) {
+    const W = 760, H = 300, M = { l: 54, r: 128, t: 12, b: 34 };
+    root.innerHTML = `
+      <div class="chart-legend">${series.map(s => `<span><i style="background:var(${s.color})"></i>${s.label}</span>`).join('')}</div>
+      <div class="chart-box"><svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${ariaLabel}"></svg><div class="tip" hidden></div></div>`;
+    const svg = root.querySelector('svg'), tip = root.querySelector('.tip');
+    let data = { x: [], y: {} }, fmt = v => String(v), unit = '', hoverI = null;
+
+    const nice = v => {
+      if (v <= 0) return 1;
+      const p = 10 ** Math.floor(Math.log10(v));
+      for (const m of [1, 2, 2.5, 5, 10]) if (m * p >= v) return m * p;
+    };
+
+    function draw() {
+      const xs = data.x, n = xs.length;
+      const x0 = n ? xs[0] : 0, x1 = Math.max(x0 + 20, n ? xs[n - 1] : 20);
+      let ymax = 0;
+      for (const s of series) for (const v of data.y[s.id] || []) if (v > ymax) ymax = v;
+      ymax = nice(ymax * 1.08);
+      const X = x => M.l + (x - x0) / (x1 - x0) * (W - M.l - M.r);
+      const Y = y => H - M.b - y / ymax * (H - M.t - M.b);
+      let out = '';
+      for (let i = 0; i <= 4; i++) {
+        const v = ymax * i / 4, y = Y(v);
+        out += `<line class="gridline" x1="${M.l}" x2="${W - M.r}" y1="${y}" y2="${y}"/>`;
+        out += `<text x="${M.l - 8}" y="${y + 4}" text-anchor="end">${fmt(v)}</text>`;
+      }
+      const span = x1 - x0, step = nice(span / 6);
+      for (let x = Math.ceil(x0 / step) * step; x <= x1; x += step) {
+        out += `<text x="${X(x)}" y="${H - M.b + 18}" text-anchor="middle">${x}</text>`;
+      }
+      out += `<line class="axis" x1="${M.l}" x2="${W - M.r}" y1="${H - M.b}" y2="${H - M.b}"/>`;
+      out += `<text x="${W - M.r}" y="${H - 4}" text-anchor="end">round</text>`;
+      const ends = [];
+      for (const s of series) {
+        const ys = data.y[s.id] || [];
+        if (!ys.length) continue;
+        const pts = ys.map((v, i) => `${X(xs[i]).toFixed(1)},${Y(v).toFixed(1)}`).join(' ');
+        out += `<polyline class="series" style="stroke:var(${s.color})" points="${pts}"/>`;
+        ends.push({ s, y: Y(ys[ys.length - 1]), x: X(xs[n - 1]) });
+      }
+      // Direct labels at line ends, nudged apart so they don't collide.
+      ends.sort((a, b) => a.y - b.y);
+      for (let i = 1; i < ends.length; i++) if (ends[i].y - ends[i - 1].y < 15) ends[i].y = ends[i - 1].y + 15;
+      const overflow = ends.length ? ends[ends.length - 1].y - (H - M.b) : 0;
+      if (overflow > 0) ends.forEach(e => e.y -= overflow);
+      for (const e of ends) {
+        out += `<text class="end-label" x="${e.x + 8}" y="${e.y + 4}">${e.s.label}</text>`;
+      }
+      if (hoverI != null && hoverI < n) {
+        const hx = X(xs[hoverI]);
+        out += `<line class="xhair" x1="${hx}" x2="${hx}" y1="${M.t}" y2="${H - M.b}"/>`;
+        for (const s of series) {
+          const v = (data.y[s.id] || [])[hoverI];
+          if (v != null) out += `<circle class="dot" cx="${hx}" cy="${Y(v)}" r="4.5" style="fill:var(${s.color})"/>`;
+        }
+      }
+      svg.innerHTML = out;
+      renderTip(X);
+    }
+
+    function renderTip(X) {
+      if (hoverI == null || hoverI >= data.x.length) { tip.hidden = true; return; }
+      tip.replaceChildren();
+      const t = document.createElement('div');
+      t.className = 't';
+      t.textContent = `Round ${data.x[hoverI]}`;
+      tip.append(t);
+      const rows = series.map(s => ({ s, v: (data.y[s.id] || [])[hoverI] })).filter(r => r.v != null).sort((a, b) => b.v - a.v);
+      for (const { s, v } of rows) {
+        const r = document.createElement('div'); r.className = 'r';
+        const l = document.createElement('span');
+        const sw = document.createElement('i'); sw.style.background = `var(${s.color})`;
+        l.append(sw, document.createTextNode(s.label));
+        const b = document.createElement('b'); b.textContent = fmt(v) + unit;
+        r.append(l, b); tip.append(r);
+      }
+      tip.hidden = false;
+      const frac = (X(data.x[hoverI])) / W;
+      const box = root.querySelector('.chart-box').getBoundingClientRect();
+      const px = frac * box.width;
+      tip.style.left = (px > box.width / 2 ? Math.max(0, px - tip.offsetWidth - 12) : px + 12) + 'px';
+    }
+
+    svg.addEventListener('pointermove', e => {
+      const n = data.x.length;
+      if (!n) return;
+      const r = svg.getBoundingClientRect();
+      const vx = (e.clientX - r.left) / r.width * W;
+      const x0 = data.x[0], x1 = Math.max(x0 + 20, data.x[n - 1]);
+      const xv = x0 + (vx - M.l) / (W - M.l - M.r) * (x1 - x0);
+      let best = 0;
+      for (let i = 1; i < n; i++) if (Math.abs(data.x[i] - xv) < Math.abs(data.x[best] - xv)) best = i;
+      hoverI = best;
+      draw();
+    });
+    svg.addEventListener('pointerleave', () => { hoverI = null; draw(); });
+
+    return {
+      set(d, opts = {}) { data = d; fmt = opts.fmt || fmt; unit = opts.unit ?? ''; if (hoverI != null && hoverI >= d.x.length) hoverI = null; draw(); },
+    };
+  }
+
+  function renderTable(el, caption, series, values, fmt) {
+    el.innerHTML = `<caption>${caption}</caption><thead><tr><th scope="col">Series</th><th scope="col">Now</th></tr></thead><tbody>` +
+      series.map(s => `<tr><td><i style="background:var(${s.color})"></i>${s.label}</td><td>${values[s.id] == null ? '–' : fmt(values[s.id])}</td></tr>`).join('') + '</tbody>';
+  }
+
+  // =====================================================================
+  // Simulation runner shared by both charts
+  // =====================================================================
+  const WINDOW = 200;
+  function makeRunner({ series, build, before, metricDefs, chartEl, tableEl, playBtn, noteEl, segEl, onTick, defaultMetric }) {
+    const chart = makeChart(chartEl, series, 'Simulation results over time; values are also listed in the table below.');
+    const st = { sims: [], hist: null, metric: defaultMetric, timer: null };
+    function record() {
+      st.hist.x.push(st.sims[0].time);
+      st.sims.forEach((c, i) => {
+        const m = c.metrics();
+        for (const key of Object.keys(metricDefs)) st.hist[key][series[i].id].push(m[key]);
+      });
+      if (st.hist.x.length > WINDOW) {
+        st.hist.x.shift();
+        for (const key of Object.keys(metricDefs)) for (const s of series) st.hist[key][s.id].shift();
+      }
+    }
+    function render() {
+      const def = metricDefs[st.metric];
+      chart.set({ x: st.hist.x, y: st.hist[st.metric] }, { fmt: def.fmt, unit: def.unit });
+      const nowVals = {};
+      for (const s of series) nowVals[s.id] = st.hist[st.metric][s.id].at(-1);
+      renderTable(tableEl, `${def.label} at round ${st.hist.x.at(-1) ?? 0}`, series, nowVals, v => def.fmt(v) + def.unit);
+      noteEl.textContent = def.note;
+      segEl.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.metric === st.metric));
+    }
+    function reset() {
+      stop();
+      st.sims = build();
+      st.hist = { x: [] };
+      for (const key of Object.keys(metricDefs)) st.hist[key] = Object.fromEntries(series.map(s => [s.id, []]));
+      record(); render(); onTick && onTick(st);
+    }
+    function step() {
+      if (before(st) === false) return;
+      st.sims.forEach(c => c.tick());
+      record(); render(); onTick && onTick(st);
+    }
+    function play() {
+      if (st.timer) return;
+      playBtn.textContent = '❚❚ Pause';
+      st.timer = setInterval(step, 120);
+    }
+    function stop() {
+      clearInterval(st.timer); st.timer = null;
+      playBtn.textContent = '▶ Run';
+    }
+    playBtn.addEventListener('click', () => (st.timer ? stop() : play()));
+    segEl.addEventListener('click', e => {
+      const b = e.target.closest('button[data-metric]');
+      if (!b) return;
+      st.metric = b.dataset.metric; render();
+    });
+    return { st, reset, play, stop, step, render };
+  }
+
+  const int = v => Math.round(v).toLocaleString();
+
+  // ---------- Under-load comparison ----------
+  const LOAD_SERIES = [
+    { id: 'scuttle-depth', label: 'scuttle-depth', color: '--s1' },
+    { id: 'scuttle-breadth', label: 'scuttle-breadth', color: '--s2' },
+    { id: 'precise-newest', label: 'precise-newest', color: '--s3' },
+    { id: 'precise-oldest', label: 'precise-oldest', color: '--s4' },
+  ];
+  let loadRate = 1, loadMtu = 20, paperRun = false;
+  const PAPER_RATE = t => (t < 25 ? 1 : t < 75 ? 2 : t < 120 ? 1 : 0);
+
+  function setLoadRate(v) { loadRate = v; $('l-rate').value = v; $('l-rate-out').textContent = v; }
+  function setLoadMtu(v) { loadMtu = v; $('l-mtu').value = v; $('l-mtu-out').textContent = v; }
+
+  const load = makeRunner({
+    series: LOAD_SERIES,
+    build: () => LOAD_SERIES.map(s => new Cluster({ n: 32, keys: 16, mtu: loadMtu, strategy: s.id, seed: 11 })),
+    before: st => {
+      const t = st.sims[0].time + 1;
+      if (paperRun) {
+        setLoadRate(PAPER_RATE(t));
+        if (t > 160) { paperRun = false; load.stop(); return false; }
+      }
+      st.sims.forEach(c => { c.desired = loadRate; c.mtu = loadMtu; });
+    },
+    metricDefs: {
+      stale: { label: 'Out-of-date copies', fmt: int, unit: '', note: 'Copies (across all 32 participants) that differ from the owner\'s current value.' },
+      maxStale: { label: 'Max staleness', fmt: int, unit: ' rounds', note: 'How long, in rounds, the oldest out-of-date copy has been out of date.' },
+    },
+    chartEl: $('l-chart'), tableEl: $('l-table'), playBtn: $('l-play'),
+    noteEl: $('l-metric-note'), segEl: $('l-seg'),
+    defaultMetric: 'stale',
+    onTick: st => loadFacts(st),
+  });
+
+  function loadFacts(st) {
+      const agg = Math.round(32 * loadRate);
+      const perMsg = Math.round(agg / 2);
+      $('l-facts').innerHTML = `Round <b>${st.sims[0].time}</b> · the cluster produces <b>${agg}</b> updates per round, roughly <b>${perMsg}</b> new deltas per message, against an MTU of <b>${loadMtu}</b>` +
+        (paperRun ? ' · <b>running the paper\'s schedule</b>' : '') +
+        (perMsg > loadMtu ? ' · <span class="over">overloaded: messages can\'t keep up</span>' : '');
+  }
+
+  $('l-rate').addEventListener('input', e => { paperRun = false; setLoadRate(Number(e.target.value)); loadFacts(load.st); });
+  $('l-mtu').addEventListener('input', e => { setLoadMtu(Number(e.target.value)); loadFacts(load.st); });
+  $('l-reset').addEventListener('click', () => { paperRun = false; load.reset(); });
+  $('l-paper').addEventListener('click', () => {
+    paperRun = true; setLoadRate(1); setLoadMtu(20);
+    load.reset(); load.play();
+  });
+  load.reset();
+
+  // ---------- Flow control on vs off ----------
+  const FLOW_SERIES = [
+    { id: 'off', label: 'flow control off', color: '--s1' },
+    { id: 'on', label: 'flow control on', color: '--s2' },
+  ];
+  let flowMtu = 24;
+  function setFlowMtu(v) { flowMtu = v; $('f-mtu').value = v; $('f-mtu-out').textContent = v; }
+  const flowRunner = makeRunner({
+    series: FLOW_SERIES,
+    build: () => [false, true].map(flow => {
+      const c = new Cluster({ n: 32, keys: 16, mtu: flowMtu, strategy: 'scuttle-depth', seed: 5, flow });
+      c.desired = 8;
+      return c;
+    }),
+    before: st => st.sims.forEach(c => { c.mtu = flowMtu; }),
+    metricDefs: {
+      maxStale: { label: 'Max staleness', fmt: int, unit: ' rounds', note: 'How long the oldest out-of-date copy has been out of date.' },
+      rate: { label: 'Update rate', fmt: v => v.toFixed(2), unit: '/round', note: 'Average updates each participant actually publishes per round (each wants 8).' },
+      stale: { label: 'Out-of-date copies', fmt: int, unit: '', note: 'Copies that differ from the owner\'s current value.' },
+    },
+    chartEl: $('f-chart'), tableEl: $('f-table'), playBtn: $('f-play'),
+    noteEl: $('f-metric-note'), segEl: $('f-seg'),
+    defaultMetric: 'maxStale',
+  });
+  $('f-mtu').addEventListener('input', e => setFlowMtu(Number(e.target.value)));
+  $('f-halve').addEventListener('click', () => setFlowMtu(Math.max(4, Math.round(flowMtu / 2))));
+  $('f-reset').addEventListener('click', () => { setFlowMtu(24); flowRunner.reset(); });
+  flowRunner.reset();
+  </script>
+</body>
+</html>
