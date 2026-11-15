@@ -1,38 +1,11 @@
-// The catalog of every section and explainer on the site.
+// Builds the home page and section pages from catalog.json.
+//
 // To add an explainer: create <section-id>/<slug>/index.html, then add an
-// entry to that section's `explainers` list below. The home page and the
-// section pages are built from this list.
-const CATALOG = [
-  {
-    id: 'distributed-systems',
-    title: 'Distributed Systems',
-    blurb: 'How independent machines share data, disagree, and still end up consistent.',
-    explainers: [
-      {
-        slug: 'add-wins-set',
-        title: 'The add-wins set',
-        blurb: 'How a CRDT lets two offline replicas edit the same set and still agree, and why adds beat removes.',
-      },
-    ],
-  },
-  {
-    id: 'data-structures-algorithms',
-    title: 'Data Structures & Algorithms',
-    blurb: 'The building blocks of efficient programs, and the ideas behind them.',
-    explainers: [
-      {
-        slug: 'union-find',
-        title: 'Union Find',
-        blurb: 'Track which things are connected using a forest of parent pointers, two small tricks, and nearly constant time.',
-      },
-      {
-        slug: 'tarjan-scc',
-        title: "Tarjan's SCC algorithm",
-        blurb: 'Split a directed graph into strongly connected components with a single depth-first search, step by step.',
-      },
-    ],
-  },
-];
+// entry to that section's "explainers" list in catalog.json.
+//
+// The catalog is fetched with cache: 'no-cache', so the browser checks for a
+// newer version on every visit instead of reusing a stale copy for up to
+// 10 minutes (GitHub Pages' default). Unchanged files aren't re-downloaded.
 
 function el(tag, attrs = {}, ...kids) {
   const node = document.createElement(tag);
@@ -49,26 +22,43 @@ function el(tag, attrs = {}, ...kids) {
 
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
+async function loadCatalog(root) {
+  const res = await fetch(`${root}catalog.json`, { cache: 'no-cache' });
+  if (!res.ok) throw new Error(`catalog.json: HTTP ${res.status}`);
+  return res.json();
+}
+
+function showError(container, err) {
+  console.error(err);
+  container.replaceChildren(el('li', { class: 'none' }, 'Couldn’t load the list of explainers. Try refreshing the page.'));
+}
+
 // Home page: one card per section, listing its explainers.
-function renderHome(container) {
-  container.replaceChildren(...CATALOG.map(section =>
-    el('li', { class: 'section-card' },
-      el('div', { class: 'section-card-head' },
-        el('h2', {}, el('a', { href: `${section.id}/` }, section.title)),
-        el('span', { class: 'count' }, plural(section.explainers.length, 'explainer'))),
-      el('p', {}, section.blurb),
-      el('ul', { class: 'section-links' }, section.explainers.map(x =>
-        el('li', {}, el('a', { href: `${section.id}/${x.slug}/` }, x.title, ' →')))))));
+async function renderHome(container) {
+  try {
+    const catalog = await loadCatalog('');
+    container.replaceChildren(...catalog.map(section =>
+      el('li', { class: 'section-card' },
+        el('div', { class: 'section-card-head' },
+          el('h2', {}, el('a', { href: `${section.id}/` }, section.title)),
+          el('span', { class: 'count' }, plural(section.explainers.length, 'explainer'))),
+        el('p', {}, section.blurb),
+        el('ul', { class: 'section-links' }, section.explainers.map(x =>
+          el('li', {}, el('a', { href: `${section.id}/${x.slug}/` }, x.title, ' →')))))));
+  } catch (err) { showError(container, err); }
 }
 
 // Section page: a card per explainer in this section.
-function renderSection(sectionId, container) {
-  const section = CATALOG.find(s => s.id === sectionId);
-  document.getElementById('section-title').textContent = section.title;
-  document.getElementById('section-blurb').textContent = section.blurb;
-  container.replaceChildren(...section.explainers.map(x =>
-    el('li', {},
-      el('a', { class: 'card', href: `${x.slug}/` },
-        el('h2', {}, x.title),
-        el('p', {}, x.blurb)))));
+async function renderSection(sectionId, container) {
+  try {
+    const catalog = await loadCatalog('../');
+    const section = catalog.find(s => s.id === sectionId);
+    document.getElementById('section-title').textContent = section.title;
+    document.getElementById('section-blurb').textContent = section.blurb;
+    container.replaceChildren(...section.explainers.map(x =>
+      el('li', {},
+        el('a', { class: 'card', href: `${x.slug}/` },
+          el('h2', {}, x.title),
+          el('p', {}, x.blurb)))));
+  } catch (err) { showError(container, err); }
 }

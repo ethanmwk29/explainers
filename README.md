@@ -15,13 +15,14 @@ Code examples on the explainer pages are written in Go.
 
 ```
 index.html                      home page: lists every section
-site.js                         the catalog of sections + explainers (home and section pages are built from it)
+catalog.json                    the list of sections + explainers (home and section pages are built from it)
+site.js                         renders the home and section pages from catalog.json
 style.css                       shared styles
 <section>/index.html            a section page, e.g. distributed-systems/
 <section>/<explainer>/index.html  one explainer, e.g. distributed-systems/add-wins-set/
 ```
 
-Each explainer is plain HTML/CSS/JS with no build step. To add one, create its folder and `index.html`, then add an entry to that section in `site.js`. To add a section, add it to `site.js` and copy one of the existing section pages, changing the section id.
+Each explainer is plain HTML/CSS/JS with no build step. To add one, create its folder and `index.html`, then add an entry to that section in `catalog.json`. To add a section, add it to `catalog.json` and copy one of the existing section pages, changing the section id.
 
 `add-wins-set/` at the root is a redirect left in place so the old link keeps working.
 
