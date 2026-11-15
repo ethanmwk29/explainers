@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Tarjan's SCC Algorithm</title>
   <meta name="description" content="An interactive, step-by-step explainer of Tarjan's strongly connected components algorithm.">
-  <link rel="stylesheet" href="../../style.css?v=4">
+  <link rel="stylesheet" href="../../style.css?v=5">
   <script src="../../theme.js"></script>
   <style>
     .playground {
@@ -329,6 +329,15 @@ func TarjanSCC(graph [][]int) [][]int {
       <li><strong>Two ways to update low.</strong> For an edge to a vertex on the stack, some versions use <code>low[w]</code> instead of <code>index[w]</code>. Both find the same components. <code>index[w]</code> matches Tarjan's original paper and makes <code>low</code> easier to reason about.</li>
       <li><strong>Use a set for the on-stack check.</strong> Scanning the stack for <code>w</code> would cost O(V) per edge. Keep a boolean slice (like <code>onStack</code> in the Go code above) so the check takes O(1).</li>
     </ul>
+
+    <aside class="interview" aria-label="Interview notes">
+      <h2>Interview notes</h2>
+      <p><b>How often it comes up:</b> <strong>Low.</strong> Problems that truly need SCCs are rare in standard interviews. Questions about directed cycles usually only need a three-color DFS or a topological sort.</p>
+      <p><b>Be ready to:</b></p>
+      <ul><li>Explain what an SCC is, and that finding them takes one DFS (Tarjan) or two (Kosaraju, which is easier to reconstruct under pressure).</li><li>Mention that Tarjan's algorithm outputs components in reverse topological order.</li><li>For questions that only ask about cycles, reach for the simpler tools.</li></ul>
+      <p><b>Practice:</b></p>
+      <ul><li><span class="lc">LeetCode 802</span> · Find Eventual Safe States: vertices that can't reach a cycle; three-color DFS.</li><li><span class="lc">LeetCode 2360</span> · Longest Cycle in a Graph: every vertex has at most one outgoing edge, so every cycle is simple.</li><li><span class="lc">LeetCode 685</span> · Redundant Connection II: the directed version of a cycle-closing edge, with trickier cases.</li></ul>
+    </aside>
 
     <h2>Next: which edges hold an SCC together?</h2>
     <p>Tarjan's algorithm tells you which vertices belong together, but not which edges that depends on. Two graphs can have identical SCCs and different critical edges. <a href="../strong-bridges/">Strong bridges and dominators</a> picks up from here.</p>

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Removable Edges</title>
   <meta name="description" content="Which edges can you remove from an undirected graph and keep it connected? Bridges, spanning trees, and the difference between one at a time and all at once.">
-  <link rel="stylesheet" href="../../style.css?v=4">
+  <link rel="stylesheet" href="../../style.css?v=5">
   <script src="../../theme.js"></script>
   <style>
     :root { --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; }
@@ -292,6 +292,15 @@ func Bridges(n int, edges []Edge) []int {
 	}
 	return bridges
 }</code></pre>
+
+    <aside class="interview" aria-label="Interview notes">
+      <h2>Interview notes</h2>
+      <p><b>How often it comes up:</b> <strong>Moderate.</strong> One well-known problem asks for exactly this algorithm, so it's worth being able to write it.</p>
+      <p><b>Be ready to:</b></p>
+      <ul><li>Write the bridge-finding DFS from memory: <code>index</code>, <code>low</code>, skip the edge you came in on, and check <code>low[v] &gt; index[u]</code>.</li><li>Explain why a non-tree edge is never a bridge.</li><li>Count the spare edges in a graph: <code>E − (V − c)</code>.</li></ul>
+      <p><b>Practice:</b></p>
+      <ul><li><span class="lc">LeetCode 1192</span> · Critical Connections in a Network: exactly bridge finding.</li><li><span class="lc">LeetCode 1319</span> · Number of Operations to Make Network Connected: the all-at-once count: you need <code>c − 1</code> spare edges to join <code>c</code> components.</li><li><span class="lc">LeetCode 684</span> · Redundant Connection: an edge that closes a cycle (a non-bridge), found with union find.</li></ul>
+    </aside>
 
     <footer>Part of <a href="../">Data Structures &amp; Algorithms</a> in <a href="../../">Explainers</a>.</footer>
   </main>

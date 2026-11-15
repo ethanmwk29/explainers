@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Minimum Spanning Trees</title>
   <meta name="description" content="An interactive explainer of minimum spanning trees: the cut property, Kruskal's algorithm and Prim's algorithm.">
-  <link rel="stylesheet" href="../../style.css?v=4">
+  <link rel="stylesheet" href="../../style.css?v=5">
   <script src="../../theme.js"></script>
   <style>
     :root { --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; }
@@ -291,6 +291,15 @@ func (h *edgeHeap) Pop() any {
 	*h = old[:len(old)-1]
 	return x
 }</code></pre>
+
+    <aside class="interview" aria-label="Interview notes">
+      <h2>Interview notes</h2>
+      <p><b>How often it comes up:</b> <strong>Moderate to low.</strong> Usually disguised as "connect everything at the minimum total cost."</p>
+      <p><b>Be ready to:</b></p>
+      <ul><li>Write Kruskal with union find from memory.</li><li>Sketch Prim with a priority queue, and know when the O(V²) version wins (dense or complete graphs).</li><li>Spot MST problems in disguise, like points on a plane, or adding a virtual vertex.</li></ul>
+      <p><b>Practice:</b></p>
+      <ul><li><span class="lc">LeetCode 1584</span> · Min Cost to Connect All Points: a complete graph, where O(V²) Prim shines.</li><li><span class="lc">LeetCode 1135</span> · Connecting Cities With Minimum Cost: a plain MST (premium).</li><li><span class="lc">LeetCode 1168</span> · Optimize Water Distribution in a Village: add a virtual "well" vertex, then it's an MST (premium).</li><li><span class="lc">LeetCode 1489</span> · Find Critical and Pseudo-Critical Edges in Minimum Spanning Tree: hard: edges in every MST vs. edges in some MST.</li></ul>
+    </aside>
 
     <footer>Part of <a href="../">Data Structures &amp; Algorithms</a> in <a href="../../">Explainers</a>.</footer>
   </main>

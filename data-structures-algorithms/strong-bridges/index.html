@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Strong Bridges</title>
   <meta name="description" content="Which edges hold a strongly connected directed graph together? Strong bridges, dominators, and why Tarjan's SCC algorithm alone can't tell you.">
-  <link rel="stylesheet" href="../../style.css?v=4">
+  <link rel="stylesheet" href="../../style.css?v=5">
   <script src="../../theme.js"></script>
   <style>
     :root { --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; }
@@ -276,6 +276,15 @@ func dominators(adj, preds [][]int, root int) []int {
 	}
 	return idom
 }</code></pre>
+
+    <aside class="interview" aria-label="Interview notes">
+      <h2>Interview notes</h2>
+      <p><b>How often it comes up:</b> <strong>Very low.</strong> Essentially never asked in standard software-engineering interviews. Dominator trees do come up in compiler roles.</p>
+      <p><b>Be ready to:</b></p>
+      <ul><li>Give the brute-force answer: for each edge, remove it and check that the root still reaches everyone and everyone still reaches the root (one BFS on the graph, one on the reversed graph). That's O(E · (V + E)).</li><li>Mention that dominators bring it down to linear time.</li><li>Use the two-BFS check by itself: it's the standard way to test whether a directed graph is strongly connected.</li></ul>
+      <p><b>Practice:</b></p>
+      <ul><li>No standard LeetCode problem asks for this. The closest is the undirected version, <span class="lc">LeetCode 1192</span> · Critical Connections in a Network.</li></ul>
+    </aside>
 
     <footer>Part of <a href="../">Data Structures &amp; Algorithms</a> in <a href="../../">Explainers</a>.</footer>
   </main>

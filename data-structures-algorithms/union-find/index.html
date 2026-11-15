@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Union Find</title>
   <meta name="description" content="An interactive explainer of the union-find (disjoint set) data structure.">
-  <link rel="stylesheet" href="../../style.css?v=4">
+  <link rel="stylesheet" href="../../style.css?v=5">
   <script src="../../theme.js"></script>
   <style>
     .playground {
@@ -224,6 +224,15 @@ func (uf *UnionFind) Union(a, b int) bool {
       <li><strong>Elements are numbers.</strong> The array needs indices 0 to n−1. For names or other objects, keep a map from each object to its index.</li>
       <li><strong>Deep recursion.</strong> The recursive <code>find</code> above is elegant, but a long chain could overflow the stack before compression flattens it. Production code often uses an iterative loop instead.</li>
     </ul>
+
+    <aside class="interview" aria-label="Interview notes">
+      <h2>Interview notes</h2>
+      <p><b>How often it comes up:</b> <strong>High.</strong> Union find is a staple of medium-difficulty graph problems, and often the cleanest solution to "group these things" or "does this edge close a cycle?"</p>
+      <p><b>Be ready to:</b></p>
+      <ul><li>Write <code>find</code> with path compression and <code>union</code> by size from memory.</li><li>Recognize when union find fits: connections arrive one at a time and you only ever merge, never split.</li><li>Map non-integer items (emails, names) to indices first.</li></ul>
+      <p><b>Practice:</b></p>
+      <ul><li><span class="lc">LeetCode 547</span> · Number of Provinces: count the groups.</li><li><span class="lc">LeetCode 684</span> · Redundant Connection: the first edge whose endpoints already share a root.</li><li><span class="lc">LeetCode 721</span> · Accounts Merge: group accounts that share an email; map strings to indices.</li><li><span class="lc">LeetCode 990</span> · Satisfiability of Equality Equations: union every <code>==</code>, then check every <code>!=</code>.</li><li><span class="lc">LeetCode 1319</span> · Number of Operations to Make Network Connected: count components and spare edges.</li></ul>
+    </aside>
 
     <footer>Part of <a href="../">Data Structures &amp; Algorithms</a> in <a href="../../">Explainers</a>.</footer>
   </main>
