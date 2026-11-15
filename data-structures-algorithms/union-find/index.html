@@ -102,7 +102,7 @@
     <p>Union Find (also called a <em>disjoint-set</em> structure) handles exactly two operations:</p>
     <ul class="rules">
       <li><code>union(a, b)</code> merges the group containing <code>a</code> with the group containing <code>b</code>.</li>
-      <li><code>find(x)</code> returns a <strong>representative</strong> for <code>x</code>'s group. Two things are connected exactly when <code>find(a) === find(b)</code>.</li>
+      <li><code>find(x)</code> returns a <strong>representative</strong> for the group <code>x</code> is in. Every member of that group gets the same answer: <code>find(y)</code> returns that same value for every <code>y</code> in <code>x</code>'s group, and a different value for anything outside it. So two things are connected exactly when <code>find(a) === find(b)</code>.</li>
     </ul>
     <p>It's the engine behind Kruskal's minimum spanning tree algorithm, detecting cycles in graphs, grouping pixels into connected regions, and figuring out which accounts belong to the same person.</p>
 
