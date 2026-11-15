@@ -35,6 +35,11 @@
         "slug": "bridges",
         "title": "Which edges can you remove?",
         "blurb": "Bridges, spanning trees, and the difference between removing edges one at a time and all at once."
+      },
+      {
+        "slug": "mst",
+        "title": "Minimum spanning trees",
+        "blurb": "The cheapest way to keep a graph connected: the cut property, Kruskal's algorithm and Prim's algorithm, side by side."
       }
     ]
   },

@@ -1,0 +1,568 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Minimum Spanning Trees</title>
+  <meta name="description" content="An interactive explainer of minimum spanning trees: the cut property, Kruskal's algorithm and Prim's algorithm.">
+  <link rel="stylesheet" href="../../style.css?v=3">
+  <script src="../../theme.js"></script>
+  <style>
+    :root { --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) { --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; }
+    }
+    :root[data-theme="dark"] { --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; }
+
+    .wide { width: min(1100px, calc(100vw - 32px)); margin: 1.6em 0 2.2em; position: relative; left: 50%; transform: translateX(-50%); }
+    .panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; min-width: 0; }
+    .panel h3 { font-size: 0.75rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 10px; font-weight: 600; }
+    .toolbar { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+    .toolbar select { font: inherit; font-size: 0.92rem; padding: 0.3em 0.45em; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); }
+    .toolbar label { font-size: 0.9rem; color: var(--muted); display: inline-flex; gap: 6px; align-items: center; }
+    .toolbar .spacer { flex: 1; }
+    .toolbar [hidden] { display: none; }
+    .toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 0.92rem; color: var(--text); cursor: pointer; }
+    .toggle input { accent-color: var(--accent); width: 16px; height: 16px; }
+    .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+    .seg button { border: none; border-radius: 0; background: var(--surface); }
+    .seg button + button { border-left: 1px solid var(--border); }
+    .seg button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
+    .two { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(260px, 1fr); gap: 14px; margin-top: 12px; align-items: start; }
+    .two > * { min-width: 0; }   /* let wide graphs scroll inside their box instead of widening the page */
+    @media (max-width: 860px) { .two { grid-template-columns: minmax(0, 1fr); } }
+
+    /* ---------- Graph ---------- */
+    .graph-wrap { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; overflow-x: auto; }
+    svg.graph { display: block; width: 100%; height: auto; }
+    @media (max-width: 560px) { svg.graph { min-width: 520px; } }
+    .graph text { font-family: var(--sans); pointer-events: none; }
+    .graph .label { font-size: 17px; font-weight: 700; text-anchor: middle; dominant-baseline: central; fill: var(--text); }
+    .graph .node circle { fill: var(--surface); stroke: var(--text); stroke-width: 2; }
+    .graph .node.clickable { cursor: pointer; }
+    .graph .node.clickable * { pointer-events: auto; }
+    .graph .ring { fill: none !important; stroke: var(--accent) !important; stroke-width: 2.5 !important; }
+    .graph .edge { stroke: var(--muted); stroke-width: 2.2; stroke-linecap: round; fill: none; }
+    .graph .edge.mst { stroke: var(--ok); stroke-width: 4.5; }
+    .graph .edge.rejected { stroke-dasharray: 2 6; opacity: 0.5; }
+    .graph .edge.cycle { stroke: var(--accent); stroke-width: 4.5; }
+    .graph .edge.frontier { stroke: var(--accent); stroke-width: 2.6; stroke-dasharray: 6 4; }
+    .graph .edge.crossing { stroke: var(--accent); stroke-width: 3; }
+    .graph .edge.lightest { stroke: var(--ok); stroke-width: 5.5; }
+    .graph .edge.ghost { stroke: var(--ok); stroke-width: 9; opacity: 0.18; }
+    .graph .halo { stroke: var(--fresh); stroke-width: 13; stroke-linecap: round; opacity: 0.85; }
+    .graph .w-bg { fill: var(--bg); stroke: var(--border); stroke-width: 1; }
+    .graph .w { font-size: 12.5px; font-weight: 600; text-anchor: middle; dominant-baseline: central; fill: var(--text); font-variant-numeric: tabular-nums; }
+    .graph .w.dim { fill: var(--muted); font-weight: 400; }
+
+    .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 10px; font-size: 0.82rem; color: var(--muted); align-items: center; }
+    .legend span { display: inline-flex; align-items: center; gap: 6px; }
+    .note { font-size: 0.88rem; color: var(--muted); margin: 8px 0 0; }
+    .ok-text { color: var(--ok); font-weight: 600; }
+
+    /* ---------- Side lists ---------- */
+    .elist { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 0.92rem; }
+    .elist li { display: grid; grid-template-columns: 2.2em 1fr auto; align-items: center; gap: 8px; padding: 3px 8px; border-radius: 6px; border: 1px solid transparent; }
+    .elist .wt { font-variant-numeric: tabular-nums; font-weight: 700; text-align: right; }
+    .elist .nm { font-family: var(--mono); font-size: 0.86rem; }
+    .elist .st { font-size: 0.8rem; color: var(--muted); white-space: nowrap; }
+    .elist li.cur { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+    .elist li.yes .st { color: var(--ok); font-weight: 600; }
+    .elist li.no { opacity: 0.6; }
+    .elist li.no .nm { text-decoration: line-through; }
+    .total { margin-top: 12px; font-size: 0.95rem; }
+    .total b { font-size: 1.3rem; font-variant-numeric: tabular-nums; }
+
+    .narration { min-height: 6.5em; }
+    .narration p { margin: 0 0 6px; }
+    .narration code, .cut-status code { white-space: nowrap; }
+    pre.code { margin: 0 0 12px; font-size: 0.82rem; line-height: 1.6; overflow-x: auto; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 8px 0; }
+    pre.code span { display: block; padding: 0 12px; border-left: 3px solid transparent; }
+    pre.code span.hl { background: color-mix(in srgb, var(--accent) 16%, transparent); border-left-color: var(--accent); }
+    .stepcount { font-size: 0.85rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+    .cut-status p { margin: 0 0 8px; }
+
+    /* ---------- Prose ---------- */
+    .rules { padding-left: 1.2em; }
+    .rules li { margin-bottom: 0.5em; }
+    main h3 { margin: 1.8em 0 0.4em; font-size: 1.15rem; }
+    pre.snippet { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.5; }
+    pre.snippet code { background: none; padding: 0; }
+    table.cmp { border-collapse: collapse; width: 100%; font-size: 0.93rem; margin: 0.6em 0 1.2em; }
+    .cmp th, .cmp td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+    .cmp thead th { color: var(--muted); font-weight: 600; font-size: 0.82rem; }
+  </style>
+</head>
+<body>
+  <main>
+    <nav class="crumbs"><a href="../../">Explainers</a><span>/</span><a href="../">Data Structures &amp; Algorithms</a></nav>
+    <h1>Minimum spanning trees</h1>
+    <p class="lede">The cheapest way to keep a graph connected, and two classic algorithms that find it with completely different strategies but always agree.</p>
+
+    <h2>The problem</h2>
+    <p>You have an undirected, connected graph whose edges have <strong>weights</strong>: the cost of laying a cable, building a road, or running a pipe between two places. You want to keep the graph connected while paying as little as possible in total.</p>
+    <p>The answer is always a tree. Any cycle has an edge you could drop and stay connected, which would only save money. So you're looking for a <strong>spanning tree</strong> (one that touches every vertex) with the smallest total weight: a <strong>minimum spanning tree</strong>, or MST.</p>
+    <p>This picks up where <a href="../bridges/">Which edges can you remove?</a> left off. There, every spanning tree turned out to be <em>the bridges</em>, which are forced, <em>plus some edges chosen from the cycles</em>. The weights decide which cycle edges to keep. Bridges are kept no matter how heavy they are, like <code>H–I</code> (weight 14) below.</p>
+
+    <h2>The one idea behind both algorithms: the cut property</h2>
+    <p>A <strong>cut</strong> splits the vertices into two groups. Any edge with one end in each group <em>crosses</em> the cut.</p>
+    <div class="callout"><strong>Cut property:</strong> for any cut, the lightest edge crossing it belongs to a minimum spanning tree. (If all weights are distinct, it belongs to <em>the</em> MST, which is then unique.)</div>
+    <p>Why: a spanning tree has to cross every cut at least once, or the two groups wouldn't be connected. Suppose a tree crosses this cut with some heavier edge instead. Swap it for the lightest crossing edge: the result is still a spanning tree, and it's cheaper. The flip side is the <strong>cycle property</strong>: the heaviest edge on any cycle is never needed.</p>
+    <p>Try it below. Click vertices to move them between the two groups; the crossing edges light up, and the lightest one is always an MST edge.</p>
+  </main>
+
+  <section class="wide" aria-label="Cut property explorer">
+    <div class="panel">
+      <div class="toolbar">
+        <label class="toggle"><input type="checkbox" id="c-show"> Show the whole MST</label>
+        <span class="spacer"></span>
+        <button id="c-random">Random cut</button>
+        <button id="c-reset">Reset</button>
+      </div>
+      <div class="two">
+        <div>
+          <div class="graph-wrap"><svg class="graph" id="c-graph" role="img" aria-label="Click vertices to choose a cut"></svg></div>
+          <div class="legend" aria-hidden="true">
+            <span><svg width="18" height="18"><circle cx="9" cy="9" r="7" style="fill:color-mix(in srgb, var(--s1) 25%, var(--surface));stroke:var(--s1);stroke-width:2.5"/></svg>group 1</span>
+            <span><svg width="18" height="18"><circle cx="9" cy="9" r="7" style="fill:var(--surface);stroke:var(--text);stroke-width:2"/></svg>group 2</span>
+            <span><svg width="26" height="10"><line x1="1" y1="5" x2="25" y2="5" style="stroke:var(--accent);stroke-width:3"/></svg>crosses the cut</span>
+            <span><svg width="26" height="10"><line x1="1" y1="5" x2="25" y2="5" style="stroke:var(--ok);stroke-width:5"/></svg>lightest crossing edge</span>
+          </div>
+        </div>
+        <div class="panel cut-status" id="c-status" aria-live="polite"></div>
+      </div>
+    </div>
+  </section>
+
+  <main style="padding-top: 0">
+    <h2>Kruskal and Prim</h2>
+    <p>Both algorithms build the MST one edge at a time, and every edge they add is the lightest edge across some cut. They just pick their cuts differently:</p>
+    <ul class="rules">
+      <li><strong>Kruskal's algorithm</strong> thinks globally. Sort all edges from lightest to heaviest, then take each edge unless it would close a cycle. Checking for a cycle is exactly what <a href="../union-find/">union find</a> is for: an edge closes a cycle when its endpoints already have the same root. Each accepted edge is the lightest edge leaving its endpoint's current group, which is a cut.</li>
+      <li><strong>Prim's algorithm</strong> grows a single tree. Start from any vertex, and repeatedly add the cheapest edge that leaves the tree. The cut is always "the tree so far vs. everything else."</li>
+    </ul>
+    <p>Step through either one below. The example has distinct weights, so its MST is unique, and both algorithms must end up with the same tree. Check the total at the end.</p>
+  </main>
+
+  <section class="wide" aria-label="Kruskal and Prim step by step">
+    <div class="panel">
+      <div class="toolbar">
+        <div class="seg" role="group" aria-label="Algorithm">
+          <button id="alg-kruskal" aria-pressed="true">Kruskal</button>
+          <button id="alg-prim" aria-pressed="false">Prim</button>
+        </div>
+        <label id="start-wrap" hidden>Start at <select id="s-start" aria-label="Start vertex"></select></label>
+        <span class="spacer"></span>
+        <button id="s-reset" title="Back to the start">⏮</button>
+        <button id="s-back" title="Previous step (←)">← Back</button>
+        <button id="s-next" class="primary" title="Next step (→)">Next →</button>
+        <button id="s-play">▶ Play</button>
+      </div>
+      <div class="two">
+        <div>
+          <div class="graph-wrap"><svg class="graph" id="s-graph" role="img" aria-label="Minimum spanning tree algorithm in progress"></svg></div>
+          <div class="legend" aria-hidden="true" id="s-legend"></div>
+          <div class="panel narration" style="margin-top:12px">
+            <h3>What's happening <span class="stepcount" id="s-count" style="float:right"></span></h3>
+            <div id="s-text" aria-live="polite"></div>
+          </div>
+        </div>
+        <div class="panel">
+          <h3>Pseudocode</h3>
+          <pre class="code" id="s-code"></pre>
+          <h3 id="s-list-title"></h3>
+          <ul class="elist" id="s-list"></ul>
+          <div class="total" id="s-total"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <main style="padding-top: 0">
+    <h3>What Kruskal's rejections tell you</h3>
+    <p>Every edge Kruskal rejects has endpoints that are already connected by lighter edges, so it's the heaviest edge on a cycle. That makes the rejected edges exactly a maximum set you can remove <em>all at once</em> (from the <a href="../bridges/">bridges explainer</a>): <code>E − (V − 1)</code> of them, here 14 − 8 = 6. It's just the <em>cheapest-to-keep</em> version. And no bridge is ever rejected, because a bridge's endpoints can't already be connected some other way.</p>
+
+    <h2>Which one should you use?</h2>
+    <table class="cmp">
+      <thead><tr><th scope="col"></th><th scope="col">Kruskal</th><th scope="col">Prim</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">Strategy</th><td>Lightest edges first, skip cycles</td><td>Grow one tree, cheapest edge out</td></tr>
+        <tr><th scope="row">Key data structure</th><td>Union find</td><td>Priority queue (min-heap)</td></tr>
+        <tr><th scope="row">Time</th><td>O(E log E), dominated by sorting</td><td>O(E log V) with a binary heap; O(V²) with a plain array</td></tr>
+        <tr><th scope="row">Best for</th><td>Sparse graphs, edges given as a list, or edges arriving pre-sorted</td><td>Dense graphs (the O(V²) version), or graphs stored as adjacency lists</td></tr>
+        <tr><th scope="row">Disconnected graph</th><td>Naturally builds a minimum spanning <em>forest</em></td><td>Covers only the start vertex's component (restart from each unreached vertex for a forest)</td></tr>
+      </tbody>
+    </table>
+    <p>A third classic, <strong>Borůvka's algorithm</strong>, has every component add its cheapest outgoing edge in rounds. It's the oldest of the three (1926) and parallelizes well.</p>
+
+    <h2>Things worth knowing</h2>
+    <ul class="rules">
+      <li><strong>Ties.</strong> With repeated weights there can be several MSTs, all with the same total weight. Both algorithms still find one of them.</li>
+      <li><strong>Negative weights are fine.</strong> Only the order of the weights matters, never their actual values. Adding a constant to every weight doesn't change the MST.</li>
+      <li><strong>It's not a shortest-path tree.</strong> The MST minimizes the <em>total</em> weight. The path between two vertices inside it can be much longer than their shortest path in the graph.</li>
+      <li><strong>Maximum spanning trees</strong> work the same way: sort heaviest-first, or negate the weights.</li>
+      <li><strong>Directed graphs</strong> need a different algorithm. The directed version, a <em>minimum spanning arborescence</em>, is solved by the Chu–Liu/Edmonds algorithm.</li>
+      <li><strong>Uses beyond cables:</strong> clustering (build the MST, then delete its <code>k − 1</code> heaviest edges to get <code>k</code> clusters), image segmentation, and a 2-approximation for the traveling salesperson problem when distances obey the triangle inequality.</li>
+    </ul>
+
+    <h2>The code</h2>
+    <p>Both algorithms in Go. Kruskal uses union find with path compression; Prim uses <code>container/heap</code> and skips heap entries whose far end is already in the tree.</p>
+<pre class="snippet"><code>import (
+	"cmp"
+	"container/heap"
+	"slices"
+)
+
+// WEdge is an undirected edge with a weight.
+type WEdge struct {
+	U, V, Weight int
+}
+
+// Kruskal returns a minimum spanning tree (a forest, if the graph isn't
+// connected) and its total weight. Vertices are 0..n-1.
+func Kruskal(n int, edges []WEdge) ([]WEdge, int) {
+	sorted := slices.Clone(edges)
+	slices.SortFunc(sorted, func(a, b WEdge) int { return cmp.Compare(a.Weight, b.Weight) })
+
+	parent := make([]int, n) // union find with path compression
+	for i := range parent {
+		parent[i] = i
+	}
+	var find func(int) int
+	find = func(x int) int {
+		if parent[x] != x {
+			parent[x] = find(parent[x])
+		}
+		return parent[x]
+	}
+
+	var tree []WEdge
+	total := 0
+	for _, e := range sorted {
+		ru, rv := find(e.U), find(e.V)
+		if ru == rv {
+			continue // already connected: this edge would close a cycle
+		}
+		parent[ru] = rv
+		tree = append(tree, e)
+		total += e.Weight
+	}
+	return tree, total
+}
+
+// Prim grows a minimum spanning tree outward from start, always adding the
+// cheapest edge that leaves the tree. adj[v] lists v's edges (U is v).
+func Prim(adj [][]WEdge, start int) ([]WEdge, int) {
+	inTree := make([]bool, len(adj))
+	inTree[start] = true
+	h := &amp;edgeHeap{}
+	for _, e := range adj[start] {
+		heap.Push(h, e)
+	}
+	var tree []WEdge
+	total := 0
+	for h.Len() &gt; 0 {
+		e := heap.Pop(h).(WEdge)
+		if inTree[e.V] {
+			continue // both ends already in the tree: skip
+		}
+		inTree[e.V] = true
+		tree = append(tree, e)
+		total += e.Weight
+		for _, next := range adj[e.V] {
+			if !inTree[next.V] {
+				heap.Push(h, next)
+			}
+		}
+	}
+	return tree, total
+}
+
+// edgeHeap is a min-heap of edges by weight, for container/heap.
+type edgeHeap []WEdge
+
+func (h edgeHeap) Len() int           { return len(h) }
+func (h edgeHeap) Less(i, j int) bool { return h[i].Weight &lt; h[j].Weight }
+func (h edgeHeap) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
+func (h *edgeHeap) Push(x any)        { *h = append(*h, x.(WEdge)) }
+func (h *edgeHeap) Pop() any {
+	old := *h
+	x := old[len(old)-1]
+	*h = old[:len(old)-1]
+	return x
+}</code></pre>
+
+    <footer>Part of <a href="../">Data Structures &amp; Algorithms</a> in <a href="../../">Explainers</a>.</footer>
+  </main>
+
+  <script>
+  const $ = id => document.getElementById(id);
+
+  // =====================================================================
+  // The example graph (distinct weights, so the MST is unique)
+  // =====================================================================
+  const NODES = { A: [80, 120], B: [230, 60], F: [100, 330], G: [270, 250], C: [410, 140], H: [480, 330], D: [570, 65], E: [715, 175], I: [670, 360] };
+  const EDGE_SPEC = 'A-B:4 A-F:8 B-F:11 F-G:1 B-G:6 B-C:7 C-G:2 G-H:9 C-H:5 C-D:3 D-H:12 D-E:10 E-H:15 H-I:14';
+  const IDS = Object.keys(NODES).sort();
+  const EDGES = EDGE_SPEC.split(' ').map((s, id) => {
+    const [ab, w] = s.split(':'); const [a, b] = ab.split('-');
+    return { id, a, b, w: Number(w), name: `${a}–${b}` };
+  });
+  const ADJ = Object.fromEntries(IDS.map(v => [v, []]));
+  for (const e of EDGES) { ADJ[e.a].push({ to: e.b, e }); ADJ[e.b].push({ to: e.a, e }); }
+  const H = 410, W = 780, R = 20;
+
+  // Kruskal once, for the "show MST" overlays.
+  const MST = (() => {
+    const p = Object.fromEntries(IDS.map(v => [v, v]));
+    const f = x => (p[x] === x ? x : (p[x] = f(p[x])));
+    const out = new Set();
+    for (const e of [...EDGES].sort((x, y) => x.w - y.w)) { const a = f(e.a), b = f(e.b); if (a !== b) { p[a] = b; out.add(e.id); } }
+    return out;
+  })();
+
+  function draw(svg, o) {
+    svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    let s = '';
+    const line = (e, cls) => { const [x1, y1] = NODES[e.a], [x2, y2] = NODES[e.b]; return `<line class="${cls}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`; };
+    for (const e of EDGES) if (o.ghost && o.ghost.has(e.id)) s += line(e, 'edge ghost');
+    for (const e of EDGES) if (o.halo && o.halo.has(e.id)) s += line(e, 'halo');
+    for (const e of EDGES) s += line(e, 'edge ' + (o.edgeClass ? o.edgeClass(e) : ''));
+    for (const e of EDGES) {
+      const [x1, y1] = NODES[e.a], [x2, y2] = NODES[e.b];
+      const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+      const dim = o.dimWeight && o.dimWeight(e);
+      s += `<rect class="w-bg" x="${mx - 12}" y="${my - 10}" width="24" height="20" rx="6"/><text class="w${dim ? ' dim' : ''}" x="${mx}" y="${my}">${e.w}</text>`;
+    }
+    for (const v of IDS) {
+      const [x, y] = NODES[v];
+      const st = o.nodeStyle ? o.nodeStyle(v) : {};
+      s += `<g class="node${o.clickNodes ? ' clickable' : ''}" data-node="${v}">`;
+      if (st.ring) s += `<circle class="ring" cx="${x}" cy="${y}" r="${R + 6}"/>`;
+      s += `<circle cx="${x}" cy="${y}" r="${R}" style="${st.style || ''}"/><text class="label" x="${x}" y="${y}">${v}</text>`;
+      if (o.clickNodes) s += `<title>Move ${v} to the other group</title>`;
+      s += '</g>';
+    }
+    svg.innerHTML = s;
+  }
+
+  const tint = c => `fill:color-mix(in srgb, var(${c}) 25%, var(--surface));stroke:var(${c});stroke-width:3`;
+  const COLORS = ['--s1', '--s2', '--s3', '--s4'];
+
+  // =====================================================================
+  // Cut explorer
+  // =====================================================================
+  let side = new Set(['A', 'B', 'F']);
+  function renderCut() {
+    const crossing = EDGES.filter(e => side.has(e.a) !== side.has(e.b));
+    const lightest = crossing.length ? crossing.reduce((m, e) => (e.w < m.w ? e : m)) : null;
+    draw($('c-graph'), {
+      clickNodes: true,
+      ghost: $('c-show').checked ? MST : null,
+      edgeClass: e => (lightest && e.id === lightest.id ? 'lightest' : crossing.includes(e) ? 'crossing' : ''),
+      dimWeight: e => !crossing.includes(e),
+      nodeStyle: v => ({ style: side.has(v) ? tint('--s1') : '' }),
+    });
+    const st = $('c-status');
+    if (!side.size || side.size === IDS.length) {
+      st.innerHTML = `<p>Put at least one vertex in each group. Click a vertex to move it.</p>`;
+      return;
+    }
+    const sorted = [...crossing].sort((a, b) => a.w - b.w);
+    st.innerHTML = `<p><b>Group 1:</b> ${[...side].sort().join(', ')}<br><b>Group 2:</b> ${IDS.filter(v => !side.has(v)).join(', ')}</p>
+      <p>${crossing.length} edge${crossing.length === 1 ? '' : 's'} cross the cut: ${sorted.map(e => `<code>${e.name}</code> (${e.w})`).join(', ')}.</p>
+      <p>The lightest is <code>${lightest.name}</code> (${lightest.w}), and it ${MST.has(lightest.id) ? '<span class="ok-text">is in the MST</span>' : 'is NOT in the MST (this should never happen)'}.</p>
+      <p class="note">Every spanning tree must use at least one of these edges, and swapping in the lightest one can only make a tree cheaper. Tick <em>Show the whole MST</em> to check.</p>`;
+  }
+  $('c-graph').addEventListener('click', e => {
+    const g = e.target.closest('[data-node]');
+    if (!g) return;
+    const v = g.dataset.node;
+    side.has(v) ? side.delete(v) : side.add(v);
+    renderCut();
+  });
+  $('c-show').addEventListener('change', renderCut);
+  $('c-reset').addEventListener('click', () => { side = new Set(['A', 'B', 'F']); renderCut(); });
+  $('c-random').addEventListener('click', () => {
+    do { side = new Set(IDS.filter(() => Math.random() < 0.5)); } while (!side.size || side.size === IDS.length);
+    renderCut();
+  });
+  renderCut();
+
+  // =====================================================================
+  // Kruskal and Prim traces
+  // =====================================================================
+  const KCODE = [
+    ['sort', 'sort edges by weight'],
+    ['', 'for each edge u–v, lightest first:'],
+    ['consider', '  if find(u) == find(v):'],
+    ['reject', '    skip it (it would close a cycle)'],
+    ['accept', '  else:'],
+    ['accept', '    union(u, v); add u–v to the tree'],
+  ];
+  const PCODE = [
+    ['start', 'tree = {start}'],
+    ['', 'while some vertex is outside the tree:'],
+    ['consider', '  look at every edge leaving the tree'],
+    ['accept', '  add the cheapest one to the tree'],
+  ];
+
+  function kruskalTrace() {
+    const parent = Object.fromEntries(IDS.map(v => [v, v]));
+    const find = x => (parent[x] === x ? x : find(parent[x]));
+    const sorted = [...EDGES].sort((a, b) => a.w - b.w);
+    const status = {}, steps = [];
+    let total = 0, count = 0;
+    const groups = () => { const g = {}; for (const v of IDS) g[v] = find(v); return g; };
+    const snap = (line, msg, x = {}) => steps.push({ line, msg, status: { ...status }, groups: groups(), total, count, cur: x.cur ?? null, cycle: x.cycle ?? null });
+    snap('sort', `<p>Sort all ${EDGES.length} edges from lightest to heaviest (the list on the right). Every vertex starts in its own union-find group.</p>`);
+    for (const e of sorted) {
+      snap('consider', `<p>Next lightest: <b>${e.name}</b> (${e.w}). Are ${e.a} and ${e.b} already connected? Compare their union-find roots.</p>`, { cur: e.id });
+      if (find(e.a) === find(e.b)) {
+        status[e.id] = 'no';
+        snap('reject', `<p><b>Reject ${e.name}.</b> ${e.a} and ${e.b} are already in the same group, so adding it would close a cycle (highlighted). Every other edge on that cycle is lighter, so ${e.name} is the heaviest edge on it: the cycle property says it's never needed.</p>`,
+          { cur: e.id, cycle: treePath(status, e.a, e.b) });
+      } else {
+        parent[find(e.a)] = find(e.b);
+        status[e.id] = 'yes';
+        total += e.w; count++;
+        let msg = `<p><b>Accept ${e.name}.</b> ${e.a} and ${e.b} were in different groups, so it can't close a cycle. It's the lightest edge leaving ${e.a}'s old group: the cut property says it's safe. <code>union(${e.a}, ${e.b})</code>.</p>`;
+        if (count === IDS.length - 1) msg += `<p>That's ${count} edges, V − 1, so the tree is complete. A real implementation could stop here; we'll keep going to show every remaining edge gets rejected.</p>`;
+        snap('accept', msg, { cur: e.id });
+      }
+    }
+    snap('', `<p><b>Done.</b> Kruskal kept ${count} edges with a total weight of <b>${total}</b> and rejected ${EDGES.length - count}. Switch to Prim to check it finds the same tree.</p>`);
+    return { steps, order: sorted.map(e => e.id) };
+  }
+
+  // Path between a and b using accepted ("yes") edges, as a set of edge ids.
+  function treePath(status, a, b) {
+    const prev = { [a]: null }, q = [a];
+    while (q.length) {
+      const v = q.shift();
+      if (v === b) break;
+      for (const { to, e } of ADJ[v]) if (status[e.id] === 'yes' && !(to in prev)) { prev[to] = { v, e: e.id }; q.push(to); }
+    }
+    const out = new Set();
+    for (let v = b; prev[v]; v = prev[v].v) out.add(prev[v].e);
+    return out;
+  }
+
+  function primTrace(start) {
+    const inTree = new Set([start]);
+    const status = {}, steps = [];
+    let total = 0;
+    const frontierOf = () => EDGES.filter(e => inTree.has(e.a) !== inTree.has(e.b)).sort((a, b) => a.w - b.w);
+    const snap = (line, msg, x = {}) => steps.push({ line, msg, status: { ...status }, inTree: new Set(inTree), total, count: inTree.size - 1, cur: x.cur ?? null, frontier: x.frontier ?? [] });
+    snap('start', `<p>Start the tree with <b>${start}</b>. Any vertex works, and the final tree is the same.</p>`, { frontier: frontierOf().map(e => e.id) });
+    while (inTree.size < IDS.length) {
+      const fr = frontierOf();
+      snap('consider', `<p>The cut is <em>tree vs. everything else</em>. ${fr.length} edge${fr.length === 1 ? '' : 's'} cross it (the list on the right). The lightest is <b>${fr[0].name}</b> (${fr[0].w}).</p>`, { frontier: fr.map(e => e.id), cur: fr[0].id });
+      const e = fr[0];
+      const v = inTree.has(e.a) ? e.b : e.a;
+      inTree.add(v);
+      status[e.id] = 'yes';
+      total += e.w;
+      const stale = EDGES.filter(x => !status[x.id] && inTree.has(x.a) && inTree.has(x.b) && (x.a === v || x.b === v));
+      snap('accept', `<p><b>Add ${e.name}</b>, bringing <b>${v}</b> into the tree.` +
+        (stale.length ? ` Now ${stale.map(x => `<code>${x.name}</code>`).join(', ')} ${stale.length === 1 ? 'has' : 'have'} both ends in the tree, so ${stale.length === 1 ? 'it no longer crosses' : 'they no longer cross'} the cut and will never be used.` : '') + `</p>`,
+        { cur: e.id, frontier: frontierOf().map(x => x.id) });
+    }
+    snap('', `<p><b>Done.</b> Prim added ${IDS.length - 1} edges with a total weight of <b>${total}</b>, the same tree Kruskal finds.</p>`);
+    return { steps };
+  }
+
+  // =====================================================================
+  // Stepper
+  // =====================================================================
+  const st = { alg: 'kruskal', start: 'A', trace: null, i: 0, timer: null };
+  $('s-start').innerHTML = IDS.map(v => `<option>${v}</option>`).join('');
+
+  function load() {
+    stop();
+    st.trace = st.alg === 'kruskal' ? kruskalTrace() : primTrace(st.start);
+    const code = st.alg === 'kruskal' ? KCODE : PCODE;
+    $('s-code').innerHTML = code.map(([, t]) => `<span>${t}</span>`).join('');
+    $('alg-kruskal').setAttribute('aria-pressed', st.alg === 'kruskal');
+    $('alg-prim').setAttribute('aria-pressed', st.alg === 'prim');
+    $('start-wrap').hidden = st.alg !== 'prim';
+    $('s-list-title').textContent = st.alg === 'kruskal' ? 'Edges, lightest first' : 'Edges crossing the cut';
+    $('s-legend').innerHTML = (st.alg === 'kruskal'
+      ? `<span><svg width="26" height="10"><line x1="1" y1="5" x2="25" y2="5" style="stroke:var(--ok);stroke-width:4.5"/></svg>in the tree</span>
+         <span><svg width="26" height="10"><line x1="1" y1="5" x2="25" y2="5" style="stroke:var(--muted);stroke-width:2.2;stroke-dasharray:2 6;opacity:.6"/></svg>rejected</span>
+         <span><svg width="26" height="10"><line x1="1" y1="5" x2="25" y2="5" style="stroke:var(--accent);stroke-width:4.5"/></svg>cycle it would close</span>
+         <span>vertex colors: union-find groups</span>`
+      : `<span><svg width="26" height="10"><line x1="1" y1="5" x2="25" y2="5" style="stroke:var(--ok);stroke-width:4.5"/></svg>in the tree</span>
+         <span><svg width="26" height="10"><line x1="1" y1="5" x2="25" y2="5" style="stroke:var(--accent);stroke-width:2.6;stroke-dasharray:6 4"/></svg>crosses the cut</span>
+         <span><svg width="18" height="18"><circle cx="9" cy="9" r="7" style="fill:color-mix(in srgb, var(--s3) 25%, var(--surface));stroke:var(--s3);stroke-width:2.5"/></svg>in the tree</span>`);
+    show(0);
+  }
+
+  function show(i) {
+    const steps = st.trace.steps;
+    st.i = Math.max(0, Math.min(steps.length - 1, i));
+    const s = steps[st.i];
+    const code = st.alg === 'kruskal' ? KCODE : PCODE;
+    if (st.alg === 'kruskal') {
+      // Color vertices by union-find group (only groups with 2+ members).
+      const members = {};
+      for (const v of IDS) (members[s.groups[v]] ||= []).push(v);
+      const roots = Object.keys(members).filter(r => members[r].length > 1).sort();
+      draw($('s-graph'), {
+        halo: s.cur != null ? new Set([s.cur]) : null,
+        edgeClass: e => (s.cycle && s.cycle.has(e.id) ? 'cycle' : s.status[e.id] === 'yes' ? 'mst' : s.status[e.id] === 'no' ? 'rejected' : ''),
+        dimWeight: e => s.status[e.id] === 'no',
+        nodeStyle: v => {
+          const r = roots.indexOf(s.groups[v]);
+          return { style: r >= 0 ? tint(COLORS[r % COLORS.length]) : '' };
+        },
+      });
+      $('s-list').innerHTML = st.trace.order.map(id => {
+        const e = EDGES[id], stt = s.status[id];
+        return `<li class="${id === s.cur ? 'cur' : ''} ${stt || ''}"><span class="wt">${e.w}</span><span class="nm">${e.name}</span><span class="st">${stt === 'yes' ? '✓ kept' : stt === 'no' ? '✗ cycle' : id === s.cur ? '← now' : ''}</span></li>`;
+      }).join('');
+    } else {
+      draw($('s-graph'), {
+        halo: s.cur != null ? new Set([s.cur]) : null,
+        edgeClass: e => (s.status[e.id] === 'yes' ? 'mst' : s.frontier.includes(e.id) ? 'frontier' : ''),
+        dimWeight: e => !s.status[e.id] && !s.frontier.includes(e.id),
+        nodeStyle: v => ({ style: s.inTree.has(v) ? tint('--s3') : '', ring: v === st.start }),
+      });
+      $('s-list').innerHTML = s.frontier.length
+        ? s.frontier.map((id, k) => { const e = EDGES[id]; return `<li class="${id === s.cur ? 'cur' : ''}"><span class="wt">${e.w}</span><span class="nm">${e.name}</span><span class="st">${k === 0 ? 'lightest' : ''}</span></li>`; }).join('')
+        : '<li class="note">none: every vertex is in the tree</li>';
+    }
+    $('s-text').innerHTML = s.msg;
+    $('s-count').textContent = `step ${st.i + 1} of ${steps.length}`;
+    $('s-total').innerHTML = `Tree so far: <b>${s.count}</b> of ${IDS.length - 1} edges, total weight <b>${s.total}</b>`;
+    [...$('s-code').children].forEach((el, k) => el.classList.toggle('hl', s.line !== '' && code[k][0] === s.line));
+    $('s-back').disabled = st.i === 0;
+    $('s-reset').disabled = st.i === 0;
+    $('s-next').disabled = st.i === steps.length - 1;
+    if (st.i === steps.length - 1) stop();
+  }
+
+  function stop() { clearInterval(st.timer); st.timer = null; $('s-play').textContent = '▶ Play'; }
+  $('s-play').addEventListener('click', () => {
+    if (st.timer) return stop();
+    if (st.i === st.trace.steps.length - 1) show(0);
+    $('s-play').textContent = '❚❚ Pause';
+    st.timer = setInterval(() => show(st.i + 1), 1100);
+  });
+  $('s-next').addEventListener('click', () => { stop(); show(st.i + 1); });
+  $('s-back').addEventListener('click', () => { stop(); show(st.i - 1); });
+  $('s-reset').addEventListener('click', () => { stop(); show(0); });
+  $('alg-kruskal').addEventListener('click', () => { st.alg = 'kruskal'; load(); });
+  $('alg-prim').addEventListener('click', () => { st.alg = 'prim'; load(); });
+  $('s-start').addEventListener('change', e => { st.start = e.target.value; load(); });
+  document.addEventListener('keydown', e => {
+    if (e.target.closest('input, select, textarea') || e.metaKey || e.ctrlKey || e.altKey) return;
+    const r = $('s-graph').getBoundingClientRect();
+    if (r.bottom < 0 || r.top > innerHeight) return;
+    if (e.key === 'ArrowRight') { stop(); show(st.i + 1); e.preventDefault(); }
+    if (e.key === 'ArrowLeft') { stop(); show(st.i - 1); e.preventDefault(); }
+  });
+  load();
+  </script>
+</body>
+</html>

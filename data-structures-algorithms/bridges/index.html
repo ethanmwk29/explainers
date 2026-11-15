@@ -36,7 +36,8 @@
     .seg button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
 
     .two { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(260px, 1fr); gap: 14px; margin-top: 12px; align-items: start; }
-    @media (max-width: 860px) { .two { grid-template-columns: 1fr; } }
+    .two > * { min-width: 0; }   /* let wide graphs scroll inside their box instead of widening the page */
+    @media (max-width: 860px) { .two { grid-template-columns: minmax(0, 1fr); } }
 
     /* ---------- Graph drawing ---------- */
     .graph-wrap { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; overflow-x: auto; }
