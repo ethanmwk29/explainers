@@ -13,6 +13,11 @@
         "slug": "scuttlebutt",
         "title": "Scuttlebutt gossip",
         "blurb": "How gossip protocols reconcile state efficiently under limited bandwidth, and how flow control keeps them from falling behind."
+      },
+      {
+        "slug": "vector-clocks",
+        "title": "Vector clocks",
+        "blurb": "How to tell which events could have influenced which without a shared clock, and why one counter per process is enough to detect concurrency."
       }
     ]
   },

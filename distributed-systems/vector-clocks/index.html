@@ -1,0 +1,920 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Vector Clocks</title>
+  <meta name="description" content="An interactive explainer of vector clocks: the happened-before relation, why Lamport clocks can't detect concurrency, and how vector clocks can.">
+  <link rel="stylesheet" href="../../style.css?v=5">
+  <script src="../../theme.js"></script>
+  <style>
+    .playground {
+      width: min(1240px, calc(100vw - 32px));
+      margin: 1.6em 0 2.4em;
+      position: relative;
+      left: 50%;
+      transform: translateX(-50%);
+    }
+    .panel {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 16px 18px; min-width: 0;
+    }
+    .panel h3 {
+      font-size: 0.75rem; text-transform: uppercase; letter-spacing: .08em;
+      color: var(--muted); margin: 0 0 10px; font-weight: 600;
+    }
+    .toolbar { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+    .toolbar + .toolbar { margin-top: 10px; }
+    .toolbar .lbl, .toolbar label { font-size: 0.9rem; color: var(--muted); display: inline-flex; gap: 6px; align-items: center; }
+    .toolbar .group { display: inline-flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+    .toolbar select {
+      font: inherit; font-size: 0.92rem; padding: 0.3em 0.45em; border-radius: 8px;
+      border: 1px solid var(--border); background: var(--bg); color: var(--text);
+    }
+    .toolbar input[type=checkbox] { accent-color: var(--accent); width: 16px; height: 16px; margin: 0; }
+    .toolbar .spacer { flex: 1; }
+    .toolbar button.proc { min-width: 2.6em; font-weight: 700; }
+    .note { font-size: 0.88rem; color: var(--muted); margin: 10px 0 0; }
+
+    /* ---------- Space-time diagram ---------- */
+    .diagram-wrap {
+      overflow-x: auto; background: var(--bg); border: 1px solid var(--border);
+      border-radius: 10px; margin-top: 12px;
+    }
+    svg.st { display: block; max-width: none; }
+    svg.st text { font-family: var(--sans); }
+    .st .lane { stroke: var(--border); stroke-width: 2; }
+    .st .lane-name { font-size: 18px; font-weight: 700; fill: var(--text); text-anchor: middle; dominant-baseline: central; }
+    .st .lane-clock { font-family: var(--mono); font-size: 11px; fill: var(--muted); text-anchor: middle; }
+    .st .seg { stroke-width: 4; stroke-linecap: round; }
+    .st .seg.hx { stroke: var(--a); }
+    .st .seg.hy { stroke: var(--b); }
+    .st .msg { fill: none; stroke: var(--muted); stroke-width: 1.6; }
+    .st .msg.hx { stroke: var(--a); stroke-width: 2.6; }
+    .st .msg.hy { stroke: var(--b); stroke-width: 2.6; }
+    .st .pending-line { fill: none; stroke: var(--accent); stroke-width: 1.6; stroke-dasharray: 5 4; }
+    .st .pending rect { fill: var(--surface); stroke: var(--accent); stroke-width: 1.4; stroke-dasharray: 3 2; }
+    .st .pending text { font-size: 11px; font-weight: 600; fill: var(--accent); text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+    .st .pending { cursor: pointer; }
+    .st .pending:hover rect, .st .pending:focus-visible rect { fill: color-mix(in srgb, var(--accent) 14%, var(--surface)); stroke-dasharray: none; }
+    .st .halo-x { fill: var(--a-soft); stroke: var(--a); stroke-width: 1.2; }
+    .st .halo-y { fill: var(--b-soft); stroke: var(--b); stroke-width: 1.2; }
+    .st .ev circle.node { fill: var(--surface); stroke: var(--text); stroke-width: 1.6; }
+    .st .ev text.nm { font-size: 11px; font-weight: 700; text-anchor: middle; dominant-baseline: central; fill: var(--text); pointer-events: none; }
+    .st .ev.sx circle.node { fill: var(--a); stroke: var(--a); }
+    .st .ev.sy circle.node { fill: var(--b); stroke: var(--b); }
+    .st .ev.sx text.nm, .st .ev.sy text.nm { fill: var(--on-accent); }
+    .st .ev.mark circle.node { stroke: var(--accent); stroke-width: 3; }
+    .st .ev.pick { cursor: pointer; outline: none; }
+    .st .ev.pick:hover circle.node, .st .ev.pick:focus-visible circle.node { stroke: var(--accent); stroke-width: 3; }
+    .st .vec, .st .lam {
+      text-anchor: middle; paint-order: stroke; stroke: var(--bg); stroke-width: 4px; stroke-linejoin: round; pointer-events: none;
+    }
+    .st .vec { font-family: var(--mono); font-size: 12px; fill: var(--text); }
+    .st .vec.vx { fill: var(--a); font-weight: 700; }
+    .st .vec.vy { fill: var(--b); font-weight: 700; }
+    .st .lam { font-size: 11.5px; fill: var(--muted); font-variant-numeric: tabular-nums; }
+    .st .lam.big { font-size: 13px; font-weight: 700; fill: var(--text); }
+
+    .inflight { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; margin-top: 10px; font-size: 0.9rem; min-height: 2em; }
+    .inflight .lbl { color: var(--muted); font-size: 0.85rem; font-weight: 600; }
+    .inflight button { font-size: 0.85rem; padding: 0.25em 0.7em; border-style: dashed; border-color: var(--accent); }
+    .inflight .none { color: var(--muted); font-size: 0.88rem; }
+    .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 10px; font-size: 0.82rem; color: var(--muted); align-items: center; }
+    .legend span { display: inline-flex; align-items: center; gap: 6px; }
+    .legend svg { flex: none; }
+
+    /* ---------- Panels below the diagram ---------- */
+    .below {
+      display: grid; gap: 14px; margin-top: 14px; align-items: start;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr) minmax(0, 1fr);
+    }
+    @media (max-width: 1060px) {
+      .below { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+      .below .compare-panel { grid-column: 1 / -1; grid-row: 1; }
+    }
+    @media (max-width: 680px) {
+      .below { grid-template-columns: minmax(0, 1fr); }
+      .below .compare-panel { grid-row: auto; }
+    }
+    .tour-text { min-height: 7em; margin-bottom: 12px; font-size: 0.97rem; }
+    .tour-text p:last-child { margin-bottom: 0; }
+    .tour-controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .tour-step { color: var(--muted); font-size: 0.85rem; margin-left: auto; }
+
+    .compare { font-size: 0.95rem; min-height: 7em; }
+    .compare p { margin: 0 0 8px; }
+    .compare p:last-child { margin-bottom: 0; }
+    .tagx, .tagy {
+      display: inline-block; font-size: 0.75rem; font-weight: 700; padding: 0 6px; border-radius: 5px;
+      color: var(--on-accent); vertical-align: 1px;
+    }
+    .tagx { background: var(--a); }
+    .tagy { background: var(--b); }
+    .cx { color: var(--a); font-weight: 700; }
+    .cy { color: var(--b); font-weight: 700; }
+    table.cmp { border-collapse: collapse; font-variant-numeric: tabular-nums; margin: 4px 0 10px; font-size: 0.92rem; }
+    .cmp th, .cmp td { padding: 3px 12px; text-align: center; border-bottom: 1px solid var(--border); }
+    .cmp thead th { color: var(--muted); font-weight: 600; font-size: 0.8rem; }
+    .cmp tbody th { text-align: left; font-weight: 600; }
+    .cmp td.rel { color: var(--muted); font-family: var(--mono); }
+    .cmp td.rel.gt { color: var(--a); font-weight: 700; }
+    .cmp td.rel.lt { color: var(--b); font-weight: 700; }
+    .verdict { font-weight: 700; font-size: 1.05rem; }
+    .verdict.concurrent { color: var(--warn); }
+    .verdict.ordered { color: var(--ok); }
+    .chain { font-family: var(--mono); font-size: 0.88rem; }
+    .lamport-note { font-size: 0.88rem; color: var(--muted); border-top: 1px solid var(--border); padding-top: 8px; }
+
+    pre.code {
+      margin: 0; font-size: 0.8rem; line-height: 1.6; overflow-x: auto;
+      background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 8px 0;
+    }
+    pre.code span { display: block; padding: 0 12px; border-left: 3px solid transparent; }
+    pre.code span.hl { background: color-mix(in srgb, var(--accent) 16%, transparent); border-left-color: var(--accent); }
+    .narration { font-size: 0.92rem; margin-top: 12px; min-height: 4.5em; }
+    .narration p { margin: 0; }
+
+    /* ---------- Prose ---------- */
+    .rules { padding-left: 1.2em; }
+    .rules li { margin-bottom: 0.5em; }
+    .rules code, .callout code { white-space: nowrap; }
+    main h3 { margin: 1.8em 0 0.4em; font-size: 1.15rem; }
+    .cite { font-size: 0.92rem; color: var(--muted); }
+    figure.mini { margin: 1.4em 0 1.8em; }
+    figure.mini .diagram-wrap { margin-top: 0; }
+    /* Figures shrink to fit narrow screens, down to a size where labels stay readable, then scroll. */
+    figure.mini svg.st { margin: 0 auto; width: 100%; max-width: var(--w); height: auto; min-width: 440px; }
+    figure.mini figcaption { color: var(--muted); font-size: 0.9rem; margin-top: 8px; }
+    pre.snippet {
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 14px 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.5; tab-size: 4;
+    }
+    pre.snippet code { background: none; padding: 0; }
+    .vecs { font-family: var(--mono); font-size: 0.9em; white-space: nowrap; }
+    table.terms { border-collapse: collapse; width: 100%; font-size: 0.93rem; margin: 0.6em 0 1.2em; }
+    .terms th, .terms td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+    .terms thead th { color: var(--muted); font-weight: 600; font-size: 0.82rem; }
+    .terms tbody th { white-space: nowrap; }
+    @media (max-width: 600px) {
+      .terms thead { display: none; }
+      .terms tr { display: grid; grid-template-columns: 1fr; gap: 2px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+      .terms th, .terms td { border: none; padding: 0; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <nav class="crumbs"><a href="../../">Explainers</a><span>/</span><a href="../">Distributed Systems</a></nav>
+    <h1>Vector clocks</h1>
+    <p class="lede">Machines in a distributed system can't agree on what time it is. Vector clocks sidestep the question: instead of asking <em>when</em> something happened, they track <em>who knew what</em>, and that's enough to tell exactly which events could have influenced which.</p>
+    <p class="cite">Based on Leslie Lamport's <a href="https://lamport.azurewebsites.net/pubs/time-clocks.pdf">"Time, Clocks, and the Ordering of Events in a Distributed System"</a> (1978), and on vector clocks as described independently by Colin Fidge and Friedemann Mattern (1988).</p>
+
+    <h2>No shared clock</h2>
+    <p>On a single machine, ordering events is easy: read the clock. Across machines it isn't. Each machine has its own clock, and those clocks <strong>drift</strong>: they run slightly fast or slow, and synchronization protocols like NTP can only keep them within some margin, often a few milliseconds and sometimes much worse. Two events a millisecond apart on different machines can easily get timestamps in the wrong order.</p>
+    <p>For many questions, though, we don't need the real time at all. We need to know whether one event <em>could have affected</em> another. Did the server see the first write before it accepted the second? Was this reply sent after that request arrived? That's a question about <strong>causality</strong>, and it can be answered without any clock.</p>
+
+    <h2>Happened before</h2>
+    <p>Model the system as a few <strong>processes</strong> (machines, threads, replicas) that do three kinds of things, called <strong>events</strong>: local steps, sending a message, and receiving a message. Lamport defined the <strong>happened-before</strong> relation, written <code>a → b</code>, with three rules:</p>
+    <ol class="rules">
+      <li><strong>Same process:</strong> if <code>a</code> and <code>b</code> happen on the same process and <code>a</code> comes first, then <code>a → b</code>.</li>
+      <li><strong>Messages:</strong> if <code>a</code> sends a message and <code>b</code> receives that message, then <code>a → b</code>.</li>
+      <li><strong>Transitivity:</strong> if <code>a → b</code> and <code>b → c</code>, then <code>a → c</code>.</li>
+    </ol>
+    <p>In other words, <code>a → b</code> when you can trace a path from <code>a</code> to <code>b</code> by moving forward along a process's timeline and along messages. If neither <code>a → b</code> nor <code>b → a</code>, the two events are <strong>concurrent</strong>. Concurrent doesn't mean "at the same moment." It means neither one could have known about the other.</p>
+    <p>The usual picture is a <strong>space-time diagram</strong>: one horizontal line per process, time running left to right, and an arrow for each message.</p>
+    <figure class="mini">
+      <div class="diagram-wrap"><svg class="st" id="mini-hb" role="img" aria-label="Space-time diagram: process A has events A1, A2 and A3; B has B1, B2 and B3; C has C1 and C2. A2 sends a message received at B2, and B3 sends a message received at C2."></svg></div>
+      <figcaption>A1 → C2 through the path A1, A2, B2, B3, C2. But A1 and C1 are concurrent, and so are A3 and B3: no path connects them.</figcaption>
+    </figure>
+    <p>Notice that the diagram's left-to-right position says nothing on its own. A3 is drawn to the right of B3, but A3 didn't happen after B3 in any meaningful sense: no information flowed from B3 to A3.</p>
+
+    <h2>Lamport clocks: a first attempt</h2>
+    <p>Lamport's paper also introduced a simple way to timestamp events. Each process keeps <strong>one counter</strong>:</p>
+    <ul class="rules">
+      <li>Before each local event or send, increment the counter. A send attaches the counter to the message.</li>
+      <li>On receive, set the counter to <code>max(own, message) + 1</code>.</li>
+    </ul>
+    <p>This guarantees that <strong>if <code>a → b</code>, then <code>L(a) &lt; L(b)</code></strong>. Following a path forward, the counter only goes up. It's enough to build a total order of events that respects causality (sort by counter, break ties by process ID), which is how Lamport used it, for example to implement a distributed mutual-exclusion lock.</p>
+    <p>But the converse fails: <code>L(a) &lt; L(b)</code> does <strong>not</strong> mean <code>a → b</code>. Here's the same execution with Lamport timestamps:</p>
+    <figure class="mini">
+      <div class="diagram-wrap"><svg class="st" id="mini-lamport" role="img" aria-label="The same diagram labelled with Lamport timestamps: A1 1, A2 2, A3 3, B1 1, B2 3, B3 4, C1 1, C2 5. A3 and B3 are highlighted."></svg></div>
+      <figcaption>A3 gets 3 and B3 gets 4, so Lamport order puts A3 first. Yet the two are concurrent.</figcaption>
+    </figure>
+    <p>Looking only at the numbers 3 and 4, you can't tell whether A3 influenced B3 or whether they're unrelated. Lamport timestamps throw that information away. That matters whenever concurrency is what you're trying to detect. A database that receives two writes to the same key wants to know if the second writer had seen the first (so it's safe to overwrite) or not (so it's a conflict). A single counter can't answer that.</p>
+
+    <h2>Vector clocks</h2>
+    <p>The fix is to keep <strong>one counter per process</strong>. With processes A, B and C, every event gets a vector like <span class="vecs">[2,3,0]</span>, with the entries in the order A, B, C. The rules:</p>
+    <ol class="rules">
+      <li><strong>Local event or send at process p:</strong> increment your own entry, <code>V[p] += 1</code>. A send attaches a copy of the whole vector to the message.</li>
+      <li><strong>Receive at process p:</strong> take the <strong>element-wise maximum</strong> of your vector and the message's vector, then increment your own entry.</li>
+    </ol>
+    <p>The element-wise maximum just takes the larger value in each position: <code>max([0,1,0], [2,0,0]) = [2,1,0]</code>.</p>
+    <p>What does an entry mean? <strong>Entry p of an event's vector counts how many of p's events are in that event's causal history</strong>, where the causal history of <code>e</code> is <code>e</code> itself plus every event that happened before it. B2 = <span class="vecs">[2,2,0]</span> says: "I've been influenced by A's first two events, by B's first two (counting myself), and by nothing from C."</p>
+    <figure class="mini">
+      <div class="diagram-wrap"><svg class="st" id="mini-vector" role="img" aria-label="The same diagram with vector timestamps: A1 [1,0,0], A2 [2,0,0], A3 [3,0,0], B1 [0,1,0], B2 [2,2,0], B3 [2,3,0], C1 [0,0,1], C2 [2,3,2]."></svg></div>
+      <figcaption>The same execution with vector timestamps.</figcaption>
+    </figure>
+
+    <h3>Comparing two vectors</h3>
+    <p>For two events <code>a</code> and <code>b</code>, compare their vectors entry by entry:</p>
+    <ul class="rules">
+      <li>If every entry of <code>V(a)</code> is <strong>≤</strong> the matching entry of <code>V(b)</code>, and at least one is strictly smaller, then <code>V(a) &lt; V(b)</code>, and <strong><code>a</code> happened before <code>b</code></strong>.</li>
+      <li>If it's the other way round, <code>b</code> happened before <code>a</code>.</li>
+      <li>If each vector is bigger somewhere, the events are <strong>concurrent</strong>.</li>
+    </ul>
+    <p>A1 = <span class="vecs">[1,0,0]</span> and C2 = <span class="vecs">[2,3,2]</span>: every entry of A1 is smaller or equal, so A1 → C2. A3 = <span class="vecs">[3,0,0]</span> and B3 = <span class="vecs">[2,3,0]</span>: A3 is bigger in entry A, B3 is bigger in entry B, so they're concurrent, exactly the case Lamport timestamps got wrong.</p>
+    <div class="callout">
+      <p><strong>The key property:</strong> <code>a → b</code> if and only if <code>V(a) &lt; V(b)</code>. Unlike Lamport clocks, this works in both directions, so vector clocks detect concurrency exactly.</p>
+      <p style="margin:0"><strong>Why it holds:</strong> if <code>a → b</code>, then <code>a</code>'s causal history is contained in <code>b</code>'s, so no entry can be bigger, and <code>b</code>'s own entry counts <code>b</code> itself, which isn't in <code>a</code>'s history. Conversely, a process's events in any causal history always form a prefix of its timeline (if you've heard of its 3rd event, you've heard of the first two). So if <code>V(b)</code> counts at least as many of <code>a</code>'s process's events as <code>V(a)</code> does, <code>a</code> is among them.</p>
+    </div>
+
+    <h2>Try it</h2>
+    <p>Three processes, A, B and C. Add local events, send messages, and choose when to deliver them: messages wait <em>in flight</em> (dashed) until you deliver them, so you can create concurrency on purpose. <strong>Click any event</strong> to highlight its causal history, then click a second event to compare the two. Turn on Lamport timestamps to see where they mislead. The guided tour builds the execution from the diagrams above, step by step.</p>
+  </main>
+
+  <section class="playground" aria-label="Vector clock playground">
+    <div class="panel">
+      <div class="toolbar">
+        <span class="group"><span class="lbl">Local event on</span>
+          <button class="proc" data-local="0">A</button><button class="proc" data-local="1">B</button><button class="proc" data-local="2">C</button>
+        </span>
+        <span class="group">
+          <label>Send from <select id="send-from" aria-label="Sender"></select> to <select id="send-to" aria-label="Receiver"></select></label>
+          <button class="primary" id="send">Send</button>
+        </span>
+        <span class="spacer"></span>
+        <button id="undo">Undo</button>
+        <button id="reset">Reset</button>
+      </div>
+      <div class="toolbar">
+        <label><input type="checkbox" id="immediate"> Deliver messages immediately</label>
+        <label><input type="checkbox" id="show-lamport"> Show Lamport timestamps</label>
+        <span class="note" id="limit-note" style="margin:0" hidden></span>
+      </div>
+      <div class="diagram-wrap" id="diagram-wrap"><svg class="st" id="diagram" aria-label="Space-time diagram. Each event is a button; select one or two to compare."></svg></div>
+      <div class="inflight" id="inflight"></div>
+      <div class="legend" aria-hidden="true">
+        <span><svg width="26" height="10"><line x1="1" y1="5" x2="25" y2="5" style="stroke:var(--muted);stroke-width:1.6"/></svg>delivered message</span>
+        <span><svg width="26" height="10"><line x1="1" y1="5" x2="25" y2="5" style="stroke:var(--accent);stroke-width:1.6;stroke-dasharray:5 4"/></svg>in flight</span>
+        <span><svg width="18" height="18"><circle cx="9" cy="9" r="8" style="fill:var(--a)"/></svg>selected X</span>
+        <span><svg width="18" height="18"><circle cx="9" cy="9" r="8" style="fill:var(--a-soft);stroke:var(--a);stroke-width:1.2"/></svg>happened before X</span>
+        <span><svg width="18" height="18"><circle cx="9" cy="9" r="8" style="fill:var(--b)"/></svg>selected Y</span>
+        <span><svg width="18" height="18"><circle cx="9" cy="9" r="8" style="fill:var(--b-soft);stroke:var(--b);stroke-width:1.2"/></svg>happened before Y</span>
+      </div>
+    </div>
+
+    <div class="below">
+      <div class="panel">
+        <h3>Guided tour</h3>
+        <div class="tour-text" id="tour-text"></div>
+        <div class="tour-controls">
+          <button id="tour-back" hidden>← Back</button>
+          <button class="primary" id="tour-next">Start the tour</button>
+          <span class="tour-step" id="tour-step"></span>
+        </div>
+      </div>
+      <div class="panel compare-panel">
+        <h3>Compare events</h3>
+        <div class="compare" id="compare" aria-live="polite"></div>
+      </div>
+      <div class="panel">
+        <h3>The rules</h3>
+<pre class="code" id="rules"><span data-k="local">on a local event at p:</span><span data-k="local">  V[p] += 1</span><span data-k="send">on a send from p:</span><span data-k="send">  V[p] += 1</span><span data-k="send">  attach a copy of V to the message</span><span data-k="recv">on receiving message m at p:</span><span data-k="recv">  V = max(V, m.V)   // entry by entry</span><span data-k="recv">  V[p] += 1</span></pre>
+        <div class="narration" id="narration"></div>
+      </div>
+    </div>
+  </section>
+
+  <main style="padding-top: 0">
+    <h2>Where vector clocks show up</h2>
+    <h3>Detecting conflicting writes</h3>
+    <p>This is the classic use. Amazon's <a href="https://www.allthingsdistributed.com/files/amazon-dynamo-sosp2007.pdf">Dynamo</a> attached a vector clock to every version of every object. When a client writes, it sends back the clock of the version it read, so the new version's clock is a descendant of it. When two versions meet, the store compares their clocks. If one is an ancestor of the other, the older one can be thrown away safely. If they're concurrent, neither writer saw the other's write, so the store keeps <strong>both</strong> versions (Riak calls them <em>siblings</em>) and hands them to the application to merge. Dynamo's example is a shopping cart, where the merge takes the union of the items.</p>
+    <p>Compare that with <strong>last-writer-wins</strong> using wall-clock timestamps: one of two concurrent writes silently disappears, and with clock drift, it might even be the one that happened later in real time.</p>
+
+    <h3>Causal delivery</h3>
+    <p>Some systems promise that if message <code>m1</code> happened before <code>m2</code>, every process delivers <code>m1</code> first, so nobody sees a reply before the question. The classic causal broadcast algorithm (Birman, Schiper and Stephenson) uses vectors that count messages broadcast. A process holds back a message from <code>p</code> until it's the next one from <code>p</code> (<code>m.V[p] = V[p] + 1</code>) and the process has already delivered everything the sender had seen from everyone else (<code>m.V[k] ≤ V[k]</code> for every other <code>k</code>).</p>
+
+    <h3>Debugging distributed traces</h3>
+    <p>Logs from several machines, merged by wall-clock time, can show effects before their causes. If each log line carries a vector timestamp, a tool can reconstruct the real happened-before order and draw a space-time diagram like the one above. <a href="https://bestchai.bitbucket.io/shiviz/">ShiViz</a> is one tool that does exactly this.</p>
+
+    <h3>Relatives elsewhere on this site</h3>
+    <ul class="rules">
+      <li><strong><a href="../add-wins-set/">The add-wins set</a></strong> tags each add with a pair like <code>A3</code>: replica A's 3rd operation. That pair is a single entry's worth of a vector clock, often called a <em>dot</em>. Production versions of the set summarize which dots a replica has seen with a version vector, which lets them drop removed tags instead of keeping them forever.</li>
+      <li><strong><a href="../scuttlebutt/">Scuttlebutt gossip</a></strong> exchanges digests that hold, for every participant, the highest version seen from it. That digest is essentially a version vector, and the "send whatever is newer than your entry for <code>r</code>" step is the same entry-by-entry comparison. Merging works the same way too: after an exchange, each entry is the max of the two.</li>
+    </ul>
+
+    <h2>Version vectors and other variants</h2>
+    <p>The names get mixed up in practice, so it helps to separate them:</p>
+    <table class="terms">
+      <thead><tr><th scope="col">Name</th><th scope="col">What it tracks</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">Vector clock</th><td>Timestamps <em>events</em> in an execution. Every local step, send and receive ticks the clock, as in the playground.</td></tr>
+        <tr><th scope="row">Version vector</th><td>Summarizes the <em>state of a replica</em> or a version of a piece of data. Only updates tick it, and replicas merge vectors when they sync. Comparing two version vectors tells you whether one replica's state includes the other's or whether they've diverged. Dynamo's "vector clocks" are really used this way.</td></tr>
+        <tr><th scope="row">Dotted version vector</th><td>A version vector plus one extra "dot" naming the exact update that created a version. It fixes a problem where many clients writing through the same server produce more siblings than necessary or lose track of which writes were concurrent. Riak adopted them for this reason.</td></tr>
+        <tr><th scope="row">Interval tree clock</th><td>Designed for systems where processes come and go. Instead of a fixed list of IDs, participants split and join a shared ID space, so the clock doesn't need a global registry of process names and can shrink when participants retire.</td></tr>
+      </tbody>
+    </table>
+
+    <h2>The code</h2>
+    <p>Here's a vector clock in Go. Process IDs are map keys, so a missing entry counts as 0 and the set of processes doesn't need to be fixed up front. <code>Compare</code> returns one of four answers. I tested it against randomly generated executions with late and out-of-order messages, checking that for every pair of events it agrees exactly with happened-before computed by following paths through the event graph, and that Lamport timestamps never contradict happened-before, yet also order many concurrent pairs.</p>
+<pre class="snippet"><code>// Order is how two vector timestamps relate.
+type Order int
+
+const (
+	Equal      Order = iota // the same event (or identical histories)
+	Before                  // a happened before b
+	After                   // b happened before a
+	Concurrent              // neither happened before the other
+)
+
+func (o Order) String() string {
+	return [...]string{"Equal", "Before", "After", "Concurrent"}[o]
+}
+
+// VectorClock maps a process ID to the number of events from that process
+// that are known to have happened. A missing entry means 0.
+type VectorClock map[string]uint64
+
+// Copy returns an independent copy, safe to attach to a message.
+func (vc VectorClock) Copy() VectorClock {
+	out := make(VectorClock, len(vc))
+	for id, n := range vc {
+		out[id] = n
+	}
+	return out
+}
+
+// Merge sets every entry to the larger of the two clocks' values.
+func (vc VectorClock) Merge(other VectorClock) {
+	for id, n := range other {
+		if n &gt; vc[id] {
+			vc[id] = n
+		}
+	}
+}
+
+// Compare reports how a relates to b: Before means a happened before b.
+func Compare(a, b VectorClock) Order {
+	aLess, bLess := false, false // some entry where a &lt; b, or where b &lt; a
+	for id, n := range a {
+		if n &gt; b[id] {
+			bLess = true
+		} else if n &lt; b[id] {
+			aLess = true
+		}
+	}
+	for id, n := range b {
+		if _, ok := a[id]; !ok &amp;&amp; n &gt; 0 {
+			aLess = true // a's missing entry counts as 0
+		}
+	}
+	switch {
+	case aLess &amp;&amp; bLess:
+		return Concurrent
+	case aLess:
+		return Before
+	case bLess:
+		return After
+	default:
+		return Equal
+	}
+}
+
+// Process is one participant that keeps a vector clock.
+type Process struct {
+	ID    string
+	Clock VectorClock
+}
+
+func NewProcess(id string) *Process {
+	return &amp;Process{ID: id, Clock: VectorClock{}}
+}
+
+// Local records an internal event and returns its timestamp.
+func (p *Process) Local() VectorClock {
+	p.Clock[p.ID]++
+	return p.Clock.Copy()
+}
+
+// Send records a send event. The returned timestamp travels with the message.
+func (p *Process) Send() VectorClock {
+	return p.Local()
+}
+
+// Receive records the receipt of a message carrying timestamp msg: take the
+// element-wise max, then count the receive as a new local event.
+func (p *Process) Receive(msg VectorClock) VectorClock {
+	p.Clock.Merge(msg)
+	return p.Local()
+}</code></pre>
+    <p>Typical use: each process calls <code>Local</code> or <code>Send</code> for its own events, and <code>Receive</code> with the clock that came with a message. To check whether two writes conflict, call <code>Compare</code> on their clocks and treat <code>Concurrent</code> as a conflict.</p>
+
+    <h2>Caveats</h2>
+    <ul class="rules">
+      <li><strong>Size grows with the number of processes.</strong> Every message carries one entry per process, and charging each client its own entry can mean thousands of entries. Vector clocks work best with a modest, fairly stable set of participants, such as the replicas of a key, rather than every client.</li>
+      <li><strong>Pruning loses information.</strong> To cap the size, systems sometimes drop old entries. Dynamo, for example, removed the oldest entry once a clock passed a size threshold. A dropped entry is treated as 0, which can make a descendant look concurrent with its ancestor (a needless conflict). It can also make a concurrent version look like an ancestor, in which case it gets silently discarded. Dynamo's authors reported that the problem didn't come up in production, but it's a real trade-off.</li>
+      <li><strong>"Happened before" means "could have influenced."</strong> B2 counts as after A2 because a message connected them, even if B ignored the message's contents. Vector clocks track <em>potential</em> causality, which is the safe over-approximation.</li>
+      <li><strong>No total order.</strong> Concurrent events stay unordered. If you need a single order (for example, to pick a winner), you still need a tie-breaker, such as a Lamport timestamp plus process ID, or an application-level merge.</li>
+      <li><strong>Who gets an entry matters.</strong> Entries per server keep vectors small, but then concurrent writes from two clients through the same server look sequential. That's the problem dotted version vectors address.</li>
+    </ul>
+
+    <aside class="interview" aria-label="Interview notes">
+      <h2>Interview notes</h2>
+      <p><b>How often it comes up:</b> <strong>Occasionally, in system design interviews</strong>, not in coding rounds. The usual setting is "design a key-value store" in the style of Dynamo, Cassandra or Riak, when the conversation reaches replication and conflicting writes.</p>
+      <p><b>Be ready to:</b></p>
+      <ul>
+        <li>State the update rules and the comparison rule, and compare two vectors on the spot.</li>
+        <li>Explain why Lamport timestamps can't detect concurrency, and why wall-clock last-writer-wins can lose writes.</li>
+        <li>Walk through what a store does with concurrent versions: keep siblings and return them to the client, or merge them automatically (for example with a CRDT).</li>
+        <li>Discuss the costs: vector size, pruning and its risks, and per-server vs. per-client entries.</li>
+      </ul>
+    </aside>
+
+    <footer>Part of <a href="../">Distributed Systems</a> in <a href="../../">Explainers</a>.</footer>
+  </main>
+
+  <script>
+  // ---- model start ----
+  // The clock logic, kept free of the DOM so it can be tested on its own.
+  const PROCS = ['A', 'B', 'C'];
+
+  function makeSim() {
+    return {
+      events: [],
+      inflight: [],                       // ids of send events not yet received
+      vc: PROCS.map(() => PROCS.map(() => 0)),
+      L: PROCS.map(() => 0),
+      last: PROCS.map(() => -1),
+      count: PROCS.map(() => 0),
+    };
+  }
+
+  function record(s, p, kind, extra) {
+    const id = s.events.length;
+    s.count[p]++;
+    const e = Object.assign({ id, p, kind, name: PROCS[p] + s.count[p], prev: s.last[p], from: -1, vc: s.vc[p].slice(), L: s.L[p] }, extra);
+    s.events.push(e);
+    s.last[p] = id;
+    return e;
+  }
+
+  function doLocal(s, p) {
+    const before = s.vc[p].slice(), Lbefore = s.L[p];
+    s.vc[p][p]++;
+    s.L[p]++;
+    return record(s, p, 'local', { before, Lbefore });
+  }
+
+  function doSend(s, p, q) {
+    if (p === q) throw new Error('send to self');
+    const before = s.vc[p].slice(), Lbefore = s.L[p];
+    s.vc[p][p]++;
+    s.L[p]++;
+    const e = record(s, p, 'send', { before, Lbefore, to: q, recv: -1 });
+    s.inflight.push(e.id);
+    return e;
+  }
+
+  function doDeliver(s, sendId) {
+    const i = s.inflight.indexOf(sendId);
+    if (i < 0) throw new Error('not in flight: ' + sendId);
+    s.inflight.splice(i, 1);
+    const m = s.events[sendId], q = m.to;
+    const before = s.vc[q].slice(), Lbefore = s.L[q];
+    const merged = before.map((v, k) => Math.max(v, m.vc[k]));
+    s.vc[q] = merged.slice();
+    s.vc[q][q]++;
+    s.L[q] = Math.max(s.L[q], m.L) + 1;
+    const e = record(s, q, 'recv', { before, Lbefore, merged, from: sendId });
+    m.recv = e.id;
+    return e;
+  }
+
+  // Actions: ['local', p], ['send', p, q], ['sendNow', p, q], ['deliver', sendId]
+  function applyAction(s, a) {
+    if (a[0] === 'local') return doLocal(s, a[1]);
+    if (a[0] === 'send') return doSend(s, a[1], a[2]);
+    if (a[0] === 'sendNow') { const e = doSend(s, a[1], a[2]); return doDeliver(s, e.id); }
+    if (a[0] === 'deliver') return doDeliver(s, a[1]);
+    throw new Error('unknown action ' + a[0]);
+  }
+
+  // 'equal', 'before' (a happened before b), 'after', or 'concurrent'.
+  function compareVC(a, b) {
+    let aLess = false, bLess = false;
+    for (let k = 0; k < a.length; k++) {
+      if (a[k] < b[k]) aLess = true;
+      else if (a[k] > b[k]) bLess = true;
+    }
+    if (aLess && bLess) return 'concurrent';
+    if (aLess) return 'before';
+    if (bLess) return 'after';
+    return 'equal';
+  }
+
+  // The events that happened before `id`, found by following the diagram's
+  // edges backwards (previous event on the same process, and send -> receive).
+  // This is the ground truth the vectors are supposed to match.
+  function historyOf(s, id) {
+    const seen = new Set(), stack = [id];
+    while (stack.length) {
+      const e = s.events[stack.pop()];
+      for (const d of [e.prev, e.from]) {
+        if (d >= 0 && !seen.has(d)) { seen.add(d); stack.push(d); }
+      }
+    }
+    return seen;
+  }
+
+  // A shortest path of events from `from` to `to`, or null if from -/-> to.
+  function causalChain(s, from, to) {
+    const back = new Map([[to, -1]]), queue = [to];
+    while (queue.length) {
+      const id = queue.shift();
+      if (id === from) break;
+      const e = s.events[id];
+      for (const d of [e.from, e.prev]) {
+        if (d >= 0 && !back.has(d)) { back.set(d, id); queue.push(d); }
+      }
+    }
+    if (!back.has(from)) return null;
+    const path = [];
+    for (let id = from; id !== -1; id = back.get(id)) path.push(id);
+    return path;
+  }
+  // ---- model end ----
+
+  const $ = id => document.getElementById(id);
+  const fmt = v => '[' + v.join(',') + ']';
+  const MAX_EVENTS = 40;
+
+  // =====================================================================
+  // Space-time diagram renderer (used by the playground and the figures)
+  // =====================================================================
+  function renderDiagram(svg, s, opts) {
+    const o = Object.assign({ labels: 'vector', lamport: false, sel: [], history: true, interactive: false, clocks: false, step: 76, x0: 96, minWidth: 0 }, opts);
+    const LANE = [58, 158, 258], H = 300, R = 14;
+    const X = id => o.x0 + id * o.step;
+    const lastX = s.events.length ? X(s.events.length - 1) : o.x0 - o.step / 2;
+
+    const [sx, sy] = [o.sel[0] ?? -1, o.sel[1] ?? -1];
+    const hx = sx >= 0 && o.history ? historyOf(s, sx) : new Set();
+    const hy = sy >= 0 && o.history ? historyOf(s, sy) : new Set();
+    const inX = id => id === sx || hx.has(id), inY = id => id === sy || hy.has(id);
+
+    // Where each in-flight message ends: just past the last event, stacked per lane.
+    const perLane = [0, 0, 0];
+    const pending = s.inflight.map(id => {
+      const e = s.events[id], k = perLane[e.to]++;
+      return { id, e, x: lastX + 74 + k * 70, y: LANE[e.to] };
+    });
+    const contentW = Math.max(lastX + 50, ...pending.map(p => p.x + 40), o.x0 + 120);
+    const W = Math.max(contentW, o.minWidth);
+
+    let out = `<defs>
+      <marker id="${svg.id}-arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" style="fill:var(--muted)"/></marker>
+      <marker id="${svg.id}-arr-x" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" style="fill:var(--a)"/></marker>
+      <marker id="${svg.id}-arr-y" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" style="fill:var(--b)"/></marker>
+      <marker id="${svg.id}-arr-p" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" style="fill:var(--accent)"/></marker>
+    </defs>`;
+
+    // Lanes and their names (plus each process's current clock).
+    PROCS.forEach((name, p) => {
+      out += `<line class="lane" x1="${o.x0 - 40}" x2="${W - 10}" y1="${LANE[p]}" y2="${LANE[p]}"/>`;
+      out += `<text class="lane-name" x="${o.clocks ? 32 : 26}" y="${LANE[p]}">${name}</text>`;
+      if (o.clocks) out += `<text class="lane-clock" x="32" y="${LANE[p] + 24}">${fmt(s.vc[p])}</text>`;
+    });
+
+    // Highlighted stretches of a timeline (same-process history edges).
+    for (const e of s.events) {
+      if (e.prev < 0) continue;
+      const cls = inX(e.id) && inX(e.prev) ? 'hx' : inY(e.id) && inY(e.prev) ? 'hy' : '';
+      if (cls) out += `<line class="seg ${cls}" x1="${X(e.prev)}" x2="${X(e.id)}" y1="${LANE[e.p]}" y2="${LANE[e.p]}"/>`;
+    }
+
+    // Halos for events in a selected event's history.
+    for (const e of s.events) {
+      const a = hx.has(e.id), b = hy.has(e.id), x = X(e.id), y = LANE[e.p], r = R + 6;
+      if (a && b) {
+        out += `<path class="halo-x" d="M${x} ${y - r}A${r} ${r} 0 0 0 ${x} ${y + r}Z"/><path class="halo-y" d="M${x} ${y - r}A${r} ${r} 0 0 1 ${x} ${y + r}Z"/>`;
+      } else if (a || b) {
+        out += `<circle class="${a ? 'halo-x' : 'halo-y'}" cx="${x}" cy="${y}" r="${r}"/>`;
+      }
+    }
+
+    // Delivered messages.
+    const shorten = (x1, y1, x2, y2, d1, d2) => {
+      const len = Math.hypot(x2 - x1, y2 - y1), ux = (x2 - x1) / len, uy = (y2 - y1) / len;
+      return [x1 + ux * d1, y1 + uy * d1, x2 - ux * d2, y2 - uy * d2].map(v => v.toFixed(1));
+    };
+    for (const e of s.events) {
+      if (e.kind !== 'recv') continue;
+      const m = s.events[e.from];
+      const cls = inX(m.id) && inX(e.id) ? 'hx' : inY(m.id) && inY(e.id) ? 'hy' : '';
+      const [x1, y1, x2, y2] = shorten(X(m.id), LANE[m.p], X(e.id), LANE[e.p], R, R + 2);
+      out += `<line class="msg ${cls}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" marker-end="url(#${svg.id}-arr${cls ? '-' + cls[1] : ''})"/>`;
+    }
+
+    // In-flight messages.
+    for (const pm of pending) {
+      const [x1, y1, x2, y2] = shorten(X(pm.id), LANE[pm.e.p], pm.x, pm.y, R, 12);
+      out += `<line class="pending-line" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" marker-end="url(#${svg.id}-arr-p)"/>`;
+      const label = `Deliver ${pm.e.name}'s message to ${PROCS[pm.e.to]}`;
+      out += o.interactive
+        ? `<g class="pending" data-deliver="${pm.id}" tabindex="0" role="button" aria-label="${label}"><title>${label}</title><rect x="${pm.x - 27}" y="${pm.y - 11}" width="54" height="22" rx="11"/><text x="${pm.x}" y="${pm.y}">deliver</text></g>`
+        : `<g class="pending"><rect x="${pm.x - 27}" y="${pm.y - 11}" width="54" height="22" rx="11"/><text x="${pm.x}" y="${pm.y}">in flight</text></g>`;
+    }
+
+    // Events, then their labels on top so the halos keep them readable.
+    let labels = '';
+    for (const e of s.events) {
+      const x = X(e.id), y = LANE[e.p];
+      const cls = e.id === sx ? 'sx' : e.id === sy ? 'sy' : '';
+      const mark = (o.mark || []).includes(e.id) ? ' mark' : '';
+      const kind = e.kind === 'local' ? 'local event' : e.kind === 'send' ? `send to ${PROCS[e.to]}` : `receive from ${s.events[e.from].name}`;
+      const desc = `${e.name}: ${kind}, vector ${fmt(e.vc)}, Lamport ${e.L}`;
+      out += o.interactive
+        ? `<g class="ev pick ${cls}${mark}" data-ev="${e.id}" tabindex="0" role="button" aria-pressed="${cls ? 'true' : 'false'}" aria-label="${desc}"><title>${desc}</title>`
+        : `<g class="ev ${cls}${mark}">`;
+      out += `<circle class="node" cx="${x}" cy="${y}" r="${R}"/><text class="nm" x="${x}" y="${y}">${e.name}</text></g>`;
+      if (o.labels === 'vector') labels += `<text class="vec ${cls ? 'v' + cls[1] : ''}" x="${x}" y="${y - R - 12}">${fmt(e.vc)}</text>`;
+      if (o.labels === 'lamport') labels += `<text class="lam big" x="${x}" y="${y - R - 12}">${e.L}</text>`;
+      if (o.lamport) labels += `<text class="lam" x="${x}" y="${y + R + 16}">L=${e.L}</text>`;
+    }
+    out += labels;
+
+    svg.setAttribute('width', W);
+    svg.setAttribute('height', H);
+    svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    svg.style.setProperty('--w', W + 'px');
+    svg.innerHTML = out;
+  }
+
+  // =====================================================================
+  // The example execution used by the figures and the tour
+  // =====================================================================
+  // Event ids: A1=0 B1=1 C1=2 A2=3 B2=4 B3=5 C2=6 A3=7
+  const EXAMPLE = [['local', 0], ['local', 1], ['local', 2], ['send', 0, 1], ['deliver', 3], ['sendNow', 1, 2], ['local', 0]];
+  function exampleSim() { const s = makeSim(); EXAMPLE.forEach(a => applyAction(s, a)); return s; }
+
+  function renderFigures() {
+    const s = exampleSim();
+    const fig = { step: 74, x0: 64 };
+    renderDiagram($('mini-hb'), s, Object.assign({ labels: 'none' }, fig));
+    renderDiagram($('mini-lamport'), s, Object.assign({ labels: 'lamport', mark: [7, 5] }, fig));
+    renderDiagram($('mini-vector'), s, Object.assign({ labels: 'vector' }, fig));
+  }
+
+  // =====================================================================
+  // Playground
+  // =====================================================================
+  let actions = [], sim = makeSim(), sel = [], lastEvent = null, tourStep = -1;
+
+  function rebuild() {
+    sim = makeSim();
+    lastEvent = null;
+    for (const a of actions) lastEvent = applyAction(sim, a);
+    sel = sel.filter(id => id < sim.events.length);
+  }
+
+  function act(a) {
+    if (sim.events.length + (a[0] === 'sendNow' ? 2 : 1) > MAX_EVENTS) return;
+    actions.push(a);
+    lastEvent = applyAction(sim, a);
+    render();
+  }
+
+  function toggleSelect(id) {
+    if (sel.includes(id)) sel = sel.filter(x => x !== id);
+    else sel = sel.length >= 2 ? [sel[1], id] : [...sel, id];
+    render();
+  }
+
+  const nameOf = id => sim.events[id].name;
+  const list = ids => ids.length ? ids.map(nameOf).join(', ') : 'none';
+
+  function compareHTML() {
+    if (!sel.length) {
+      return `<p>Click an event in the diagram to see its causal history. Click a second event to compare the two.</p>
+        <p class="note">You can also tab to an event and press Enter.</p>`;
+    }
+    const n = sim.events.length;
+    if (sel.length === 1) {
+      const x = sim.events[sel[0]], hist = historyOf(sim, x.id);
+      const before = [], after = [], conc = [];
+      for (let i = 0; i < n; i++) {
+        if (i === x.id) continue;
+        const r = compareVC(sim.events[i].vc, x.vc);
+        (r === 'before' ? before : r === 'after' ? after : conc).push(i);
+      }
+      const counts = PROCS.map((_, p) => [...hist, x.id].filter(i => sim.events[i].p === p).length);
+      return `<p><span class="tagx">X</span> <b>${x.name}</b> <span class="vecs">${fmt(x.vc)}</span></p>
+        <p><b>Happened before it</b> (shaded): ${list(before)}.</p>
+        <p>Counting ${x.name} itself, that's ${counts.map((c, p) => `${c} from ${PROCS[p]}`).join(', ')}, which is exactly its vector, <span class="vecs">${fmt(x.vc)}</span>.</p>
+        <p><b>Happened after it:</b> ${list(after)}.<br><b>Concurrent with it:</b> ${list(conc)}.</p>
+        <p class="note">Click a second event to compare.</p>`;
+    }
+    const x = sim.events[sel[0]], y = sim.events[sel[1]];
+    const rel = compareVC(x.vc, y.vc);
+    const rows = PROCS.map((p, k) => {
+      const a = x.vc[k], b = y.vc[k], c = a < b ? 'lt' : a > b ? 'gt' : '';
+      return `<tr><th scope="row">${p}</th><td class="cx">${a}</td><td class="rel ${c}">${a < b ? '&lt;' : a > b ? '&gt;' : '='}</td><td class="cy">${b}</td></tr>`;
+    }).join('');
+    const bigX = PROCS.filter((_, k) => x.vc[k] > y.vc[k]), bigY = PROCS.filter((_, k) => y.vc[k] > x.vc[k]);
+    const entries = a => a.length === 1 ? `entry ${a[0]}` : `entries ${a.slice(0, -1).join(', ')} and ${a[a.length - 1]}`;
+    let verdict, why;
+    if (rel === 'concurrent') {
+      verdict = `<p class="verdict concurrent">Concurrent</p>`;
+      why = `<p><span class="cx">${x.name}</span> is bigger in ${entries(bigX)}, and <span class="cy">${y.name}</span> is bigger in ${entries(bigY)}. Each has seen something the other hasn't, so neither happened before the other. No path of events and messages connects them.</p>`;
+    } else {
+      const [a, b] = rel === 'before' ? [x, y] : [y, x];
+      const [ca, cb] = rel === 'before' ? ['cx', 'cy'] : ['cy', 'cx'];
+      const chain = causalChain(sim, a.id, b.id).map(nameOf).join(' → ');
+      verdict = `<p class="verdict ordered"><span class="${ca}">${a.name}</span> happened before <span class="${cb}">${b.name}</span></p>`;
+      why = `<p>Every entry of <span class="${ca}">${a.name}</span> is ≤ the matching entry of <span class="${cb}">${b.name}</span>, and ${entries(rel === 'before' ? bigY : bigX)} ${(rel === 'before' ? bigY : bigX).length === 1 ? 'is' : 'are'} strictly smaller.</p>
+        <p>Causal chain: <span class="chain">${chain}</span></p>`;
+    }
+    let lam;
+    if (rel === 'concurrent' && x.L !== y.L) {
+      const [lo, hi] = x.L < y.L ? [x, y] : [y, x];
+      lam = `Lamport: ${lo.name} = ${lo.L}, ${hi.name} = ${hi.L}. Sorting by Lamport time puts ${lo.name} first, but that order isn't causal. From the Lamport numbers alone, you couldn't tell these events are concurrent.`;
+    } else if (rel === 'concurrent') {
+      lam = `Lamport: both are ${x.L}. Equal Lamport timestamps do imply the events are concurrent, but different ones don't imply an order.`;
+    } else {
+      const [a, b] = rel === 'before' ? [x, y] : [y, x];
+      lam = `Lamport: ${a.name} = ${a.L} &lt; ${b.name} = ${b.L}, as Lamport clocks guarantee for any ${a.name} → ${b.name}.`;
+    }
+    return `<p><span class="tagx">X</span> <b>${x.name}</b> <span class="vecs">${fmt(x.vc)}</span> &nbsp;vs&nbsp; <span class="tagy">Y</span> <b>${y.name}</b> <span class="vecs">${fmt(y.vc)}</span></p>
+      <table class="cmp"><thead><tr><th scope="col">entry</th><th scope="col">X</th><th scope="col"></th><th scope="col">Y</th></tr></thead><tbody>${rows}</tbody></table>
+      ${verdict}${why}<p class="lamport-note">${lam}</p>`;
+  }
+
+  function narrationHTML() {
+    const e = lastEvent;
+    if (!e) return '<p class="note" style="margin:0">Each step you take is explained here, and the rule it used is highlighted above.</p>';
+    const P = PROCS[e.p];
+    if (e.kind === 'local') {
+      return `<p><b>${e.name}:</b> a local event on ${P}. ${P} increments its own entry: <span class="vecs">${fmt(e.before)} → ${fmt(e.vc)}</span>.</p>`;
+    }
+    if (e.kind === 'send') {
+      return `<p><b>${e.name}:</b> ${P} sends a message to ${PROCS[e.to]}. Sending is an event, so ${P} increments its entry, <span class="vecs">${fmt(e.before)} → ${fmt(e.vc)}</span>, and the message carries a copy of <span class="vecs">${fmt(e.vc)}</span>.</p>`;
+    }
+    const m = sim.events[e.from];
+    return `<p><b>${e.name}:</b> ${P} receives ${m.name}'s message, carrying <span class="vecs">${fmt(m.vc)}</span>. The max of that and ${P}'s clock <span class="vecs">${fmt(e.before)}</span> is <span class="vecs">${fmt(e.merged)}</span>. Then ${P} increments its own entry: <span class="vecs">${fmt(e.vc)}</span>. (Lamport: max(${e.Lbefore}, ${m.L}) + 1 = ${e.L}.)</p>`;
+  }
+
+  function render() {
+    const wrap = $('diagram-wrap');
+    renderDiagram($('diagram'), sim, {
+      sel, lamport: $('show-lamport').checked, interactive: true, clocks: true,
+      minWidth: wrap.clientWidth - 2,
+    });
+
+    $('inflight').innerHTML = sim.inflight.length
+      ? `<span class="lbl">In flight:</span>` + sim.inflight.map(id => {
+          const e = sim.events[id];
+          return `<button data-deliver="${id}" title="Deliver this message now">Deliver ${e.name} → ${PROCS[e.to]}</button>`;
+        }).join('')
+      : `<span class="none">No messages in flight.</span>`;
+
+    $('compare').innerHTML = compareHTML();
+    $('narration').innerHTML = narrationHTML();
+    const k = lastEvent ? lastEvent.kind : '';
+    document.querySelectorAll('#rules span').forEach(sp => sp.classList.toggle('hl', sp.dataset.k === k));
+
+    const full = sim.events.length >= MAX_EVENTS;
+    document.querySelectorAll('[data-local], #send').forEach(b => { b.disabled = full; });
+    $('limit-note').hidden = !full;
+    $('limit-note').textContent = `That's ${MAX_EVENTS} events, the most this playground draws. Undo or reset to keep going.`;
+    $('undo').disabled = !actions.length;
+  }
+
+  // Inputs
+  for (const id of ['send-from', 'send-to']) $(id).innerHTML = PROCS.map((p, i) => `<option value="${i}">${p}</option>`).join('');
+  $('send-to').value = '1';
+  // Keep the two dropdowns different.
+  $('send-from').addEventListener('change', () => {
+    if ($('send-from').value === $('send-to').value) $('send-to').value = String((Number($('send-from').value) + 1) % 3);
+  });
+  $('send-to').addEventListener('change', () => {
+    if ($('send-from').value === $('send-to').value) $('send-from').value = String((Number($('send-to').value) + 2) % 3);
+  });
+  document.querySelectorAll('[data-local]').forEach(b => b.addEventListener('click', () => act(['local', Number(b.dataset.local)])));
+  $('send').addEventListener('click', () => {
+    const p = Number($('send-from').value), q = Number($('send-to').value);
+    if (p === q) return;
+    act([$('immediate').checked ? 'sendNow' : 'send', p, q]);
+  });
+  $('show-lamport').addEventListener('change', render);
+  $('undo').addEventListener('click', () => { actions.pop(); rebuild(); render(); });
+  $('reset').addEventListener('click', () => { actions = []; sel = []; tourStep = -1; rebuild(); render(); renderTour(); });
+  $('inflight').addEventListener('click', e => {
+    const b = e.target.closest('[data-deliver]');
+    if (b) act(['deliver', Number(b.dataset.deliver)]);
+  });
+  const diagram = $('diagram');
+  function diagramActivate(target) {
+    const ev = target.closest('[data-ev]'), dl = target.closest('[data-deliver]');
+    if (ev) { toggleSelect(Number(ev.dataset.ev)); return true; }
+    if (dl) { act(['deliver', Number(dl.dataset.deliver)]); return true; }
+    return false;
+  }
+  // Re-rendering replaces the element under focus, so put focus back on the
+  // same event (or the diagram) after a keyboard selection.
+  function refocus(attr, value) {
+    const el = diagram.querySelector(`[${attr}="${value}"]`);
+    if (el) el.focus();
+  }
+  diagram.addEventListener('click', e => diagramActivate(e.target));
+  diagram.addEventListener('keydown', e => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const ev = e.target.closest('[data-ev]');
+    if (diagramActivate(e.target)) {
+      e.preventDefault();
+      if (ev) refocus('data-ev', ev.dataset.ev);
+    }
+  });
+  let resizeTimer;
+  addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(render, 100); });
+
+  // =====================================================================
+  // Guided tour: each step adds actions; Back replays from the start.
+  // =====================================================================
+  const tour = [
+    {
+      add: [], sel: [], lamport: false,
+      text: `<p>Three processes, A, B and C, each start with the vector <span class="vecs">[0,0,0]</span>. The entries are in the order A, B, C. Each process's current clock is shown next to its name.</p>`,
+    },
+    {
+      add: [['local', 0], ['local', 1], ['local', 2]], sel: [],
+      text: `<p><b>Each process does something on its own.</b> A local event increments only the process's own entry, so A1 = <span class="vecs">[1,0,0]</span>, B1 = <span class="vecs">[0,1,0]</span> and C1 = <span class="vecs">[0,0,1]</span>. Nobody knows about anybody else yet.</p>`,
+    },
+    {
+      add: [['send', 0, 1]], sel: [],
+      text: `<p><b>A sends a message to B.</b> Sending is an event too, so A's entry goes up to 2, and the message carries a copy of <span class="vecs">[2,0,0]</span>. It's still in flight (dashed), so B doesn't know about it yet.</p>`,
+    },
+    {
+      add: [['deliver', 3]], sel: [4],
+      text: `<p><b>B receives the message.</b> B takes the element-wise max of its clock <span class="vecs">[0,1,0]</span> and the message's <span class="vecs">[2,0,0]</span>, which is <span class="vecs">[2,1,0]</span>, then increments its own entry: B2 = <span class="vecs">[2,2,0]</span>.</p><p>B2 is selected. Its causal history, A1, A2 and B1, is shaded.</p>`,
+    },
+    {
+      add: [['sendNow', 1, 2]], sel: [0, 6],
+      text: `<p><b>B sends to C</b> (B3 = <span class="vecs">[2,3,0]</span>), and C receives it as C2 = <span class="vecs">[2,3,2]</span>.</p><p>Now A1 and C2 are selected. Every entry of A1 is ≤ C2's, so <b>A1 happened before C2</b>, through the chain A1 → A2 → B2 → B3 → C2, even though A never sent anything to C.</p>`,
+    },
+    {
+      add: [], sel: [0, 2],
+      text: `<p><b>Now compare A1 and C1.</b> A1 = <span class="vecs">[1,0,0]</span> is bigger in entry A, and C1 = <span class="vecs">[0,0,1]</span> is bigger in entry C. Neither has seen the other, so they're <b>concurrent</b>. In the diagram, no path connects them.</p>`,
+    },
+    {
+      add: [['local', 0]], sel: [7, 5], lamport: true,
+      text: `<p><b>A does another local event</b>, A3 = <span class="vecs">[3,0,0]</span>, and Lamport timestamps are now shown under each event.</p><p>Compare A3 with B3. Lamport gives them 3 and 4, so sorting by Lamport time would put A3 first. But B3's A entry is only 2, so B3 never heard of A3, and A3 never heard of B3. They're <b>concurrent</b>. The Lamport numbers can't show that, but the vectors do.</p>`,
+    },
+    {
+      add: [], sel: [6],
+      text: `<p><b>Select C2 alone.</b> Everything except A3 happened before it. Its vector <span class="vecs">[2,3,2]</span> counts exactly that history: 2 events from A, 3 from B and 2 from C, counting C2 itself.</p>`,
+    },
+    {
+      add: [['send', 0, 2]], sel: [],
+      text: `<p><b>Finally, A sends a message to C.</b> It's in flight. Click <b>deliver</b> on the diagram, or the button below it, and watch C's clock jump to <span class="vecs">[4,3,3]</span>.</p><p>The playground is yours now. Leave messages in flight while other events happen, then deliver them in a different order, and compare events to find concurrent pairs.</p>`,
+    },
+  ];
+
+  function goToStep(k) {
+    tourStep = k;
+    actions = [];
+    let lamport = false;
+    for (let i = 0; i <= k; i++) {
+      actions.push(...tour[i].add);
+      if (tour[i].lamport !== undefined) lamport = tour[i].lamport;
+    }
+    sel = tour[k].sel.slice();
+    rebuild();
+    $('show-lamport').checked = lamport;
+    render();
+    renderTour();
+  }
+
+  function renderTour() {
+    const back = $('tour-back'), next = $('tour-next');
+    back.hidden = tourStep < 0;
+    back.disabled = tourStep <= 0;
+    if (tourStep < 0) {
+      next.textContent = 'Start the tour';
+      $('tour-step').textContent = '';
+      $('tour-text').innerHTML = `<p>Build the execution from the figures above one step at a time: a causal chain through messages, two concurrent events, and a pair that Lamport timestamps order misleadingly.</p>`;
+      return;
+    }
+    $('tour-text').innerHTML = tour[tourStep].text;
+    $('tour-step').textContent = `Step ${tourStep + 1} of ${tour.length}`;
+    next.textContent = tourStep === tour.length - 1 ? 'Restart tour' : 'Next →';
+  }
+  $('tour-next').addEventListener('click', () => goToStep(tourStep >= tour.length - 1 ? 0 : tourStep + 1));
+  $('tour-back').addEventListener('click', () => { if (tourStep > 0) goToStep(tourStep - 1); });
+
+  renderFigures();
+  render();
+  renderTour();
+  </script>
+</body>
+</html>
