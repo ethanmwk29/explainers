@@ -2,9 +2,25 @@
 
 Small, interactive explainers, served with GitHub Pages at https://ethanmwk29.github.io/explainers/
 
-- [The add-wins set](https://ethanmwk29.github.io/explainers/add-wins-set/): an interactive walkthrough of the OR-Set CRDT.
+**Distributed Systems**
+- [The add-wins set](https://ethanmwk29.github.io/explainers/distributed-systems/add-wins-set/): an interactive walkthrough of the OR-Set CRDT.
 
-Each explainer lives in its own folder as plain HTML/CSS/JS, with no build step. Shared styles are in `style.css`.
+**Data Structures & Algorithms**
+- [Union Find](https://ethanmwk29.github.io/explainers/data-structures-algorithms/union-find/): parent pointers, union by size, and path compression.
+
+## Layout
+
+```
+index.html                      home page: lists every section
+site.js                         the catalog of sections + explainers (home and section pages are built from it)
+style.css                       shared styles
+<section>/index.html            a section page, e.g. distributed-systems/
+<section>/<explainer>/index.html  one explainer, e.g. distributed-systems/add-wins-set/
+```
+
+Each explainer is plain HTML/CSS/JS with no build step. To add one, create its folder and `index.html`, then add an entry to that section in `site.js`. To add a section, add it to `site.js` and copy one of the existing section pages, changing the section id.
+
+`add-wins-set/` at the root is a redirect left in place so the old link keeps working.
 
 ## How the hosting works
 
@@ -17,7 +33,8 @@ Each explainer lives in its own folder as plain HTML/CSS/JS, with no build step.
 | URL | File in this repo |
 | --- | --- |
 | `ethanmwk29.github.io/explainers/` | `index.html` |
-| `ethanmwk29.github.io/explainers/add-wins-set/` | `add-wins-set/index.html` |
+| `ethanmwk29.github.io/explainers/distributed-systems/` | `distributed-systems/index.html` |
+| `ethanmwk29.github.io/explainers/distributed-systems/add-wins-set/` | `distributed-systems/add-wins-set/index.html` |
 | `ethanmwk29.github.io/explainers/style.css` | `style.css` |
 
 When a URL ends in a folder name, the server looks for an `index.html` file inside that folder. That's why each explainer gets its own folder with an `index.html` in it.
@@ -27,4 +44,4 @@ When a URL ends in a folder name, the server looks for an `index.html` file insi
 **A few details:**
 - The empty `.nojekyll` file tells GitHub to serve our files as-is. Without it, GitHub runs them through Jekyll, a site generator that ignores some files (such as anything starting with `_`).
 - The repo is public, and so is the site. Anyone with the link can view it.
-- To add an explainer: create a new folder with an `index.html`, add a card linking to it in the root `index.html`, then commit and push.
+- To add an explainer, follow the steps under **Layout** above, then commit and push.

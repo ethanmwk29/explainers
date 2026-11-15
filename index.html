@@ -4,36 +4,19 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Explainers</title>
-  <meta name="description" content="Small interactive explainers.">
+  <meta name="description" content="Small interactive explainers, organized by topic.">
   <link rel="stylesheet" href="style.css">
-  <style>
-    .cards { list-style: none; padding: 0; margin: 2em 0 0; display: grid; gap: 14px; }
-    .cards a {
-      display: block; text-decoration: none; color: inherit;
-      background: var(--surface); border: 1px solid var(--border);
-      border-radius: var(--radius); padding: 18px 20px;
-      transition: border-color .15s, transform .15s;
-    }
-    .cards a:hover { border-color: var(--accent); transform: translateY(-1px); }
-    .cards h2 { font-size: 1.15rem; margin: 0 0 4px; }
-    .cards p { margin: 0; color: var(--muted); }
-    .tagline { font-size: 0.8rem; text-transform: uppercase; letter-spacing: .08em; color: var(--accent); font-weight: 600; }
-  </style>
 </head>
 <body>
   <main>
     <h1>Explainers</h1>
-    <p class="lede">Small, interactive explanations of ideas from computer science and beyond.</p>
+    <p class="lede">Small, interactive explanations of ideas from computer science and beyond. Pick a section to start.</p>
 
-    <ul class="cards">
-      <li>
-        <a href="add-wins-set/">
-          <span class="tagline">Distributed systems</span>
-          <h2>The add-wins set</h2>
-          <p>How a CRDT lets two offline replicas edit the same set and still agree, and why adds beat removes.</p>
-        </a>
-      </li>
+    <ul class="cards" id="sections">
+      <noscript><li>This page needs JavaScript to list the sections. You can go straight to <a href="distributed-systems/">Distributed Systems</a> or <a href="data-structures-algorithms/">Data Structures &amp; Algorithms</a>.</li></noscript>
     </ul>
   </main>
+  <script src="site.js"></script>
+  <script>renderHome(document.getElementById('sections'));</script>
 </body>
 </html>

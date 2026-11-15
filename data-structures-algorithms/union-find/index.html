@@ -1,0 +1,583 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Union Find</title>
+  <meta name="description" content="An interactive explainer of the union-find (disjoint set) data structure.">
+  <link rel="stylesheet" href="../../style.css">
+  <style>
+    .playground {
+      width: min(1040px, calc(100vw - 32px));
+      margin: 1.6em 0 0;
+      position: relative;
+      left: 50%;
+      transform: translateX(-50%);
+    }
+    .panel {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 16px 18px;
+    }
+    .panel h3 { font-size: 0.95rem; margin-bottom: 8px; }
+
+    /* ---------- Controls ---------- */
+    .controls { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; margin-bottom: 10px; }
+    .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+    .seg button { border: none; border-radius: 0; background: var(--surface); }
+    .seg button + button { border-left: 1px solid var(--border); }
+    .seg button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
+    .toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 0.95rem; cursor: pointer; user-select: none; }
+    .toggle input { width: 16px; height: 16px; accent-color: var(--accent); }
+    .controls .spacer { flex: 1; }
+    .hint { color: var(--muted); font-size: 0.9rem; margin: 0 0 6px; min-height: 1.5em; }
+
+    /* ---------- Forest ---------- */
+    .forest-wrap { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; }
+    #forest { display: block; width: 100%; height: auto; }
+    #forest .node { cursor: pointer; }
+    #forest .node text {
+      font: 600 15px var(--sans); fill: var(--text); text-anchor: middle;
+      dominant-baseline: central; pointer-events: none;
+    }
+    #forest .edge { stroke: var(--muted); stroke-width: 1.8; fill: none; }
+    #forest .edge.hot { stroke: var(--accent); stroke-width: 3; }
+    #forest .ring { fill: none; stroke: var(--accent); stroke-width: 2.5; stroke-dasharray: 4 3; }
+    #forest .node.hot circle.body { stroke: var(--accent); stroke-width: 4; }
+
+    .stats { display: flex; flex-wrap: wrap; gap: 8px 22px; margin-top: 12px; font-size: 0.92rem; }
+    .stats b { font-variant-numeric: tabular-nums; }
+
+    /* ---------- Parent array ---------- */
+    .array-wrap { overflow-x: auto; margin-top: 12px; }
+    table.parents { border-collapse: separate; border-spacing: 4px; font-family: var(--mono); font-size: 0.9rem; margin: 0 auto; }
+    .parents th { font-weight: 500; color: var(--muted); text-align: right; padding-right: 8px; font-family: var(--sans); font-size: 0.8rem; white-space: nowrap; }
+    .parents td { width: 38px; height: 32px; text-align: center; border-radius: 6px; }
+    .parents .idx td { color: var(--muted); }
+    .parents .par td { border: 2px solid transparent; }
+    .parents .par td.root { font-weight: 700; }
+    .parents td.fresh { animation: flash 1.6s ease-out; }
+    @keyframes flash { 0%, 30% { box-shadow: 0 0 0 3px var(--fresh); } 100% { box-shadow: 0 0 0 3px transparent; } }
+
+    /* ---------- Precise controls ---------- */
+    .precise { display: flex; flex-wrap: wrap; gap: 10px 22px; margin-top: 12px; font-family: var(--mono); font-size: 0.92rem; align-items: center; }
+    .precise form { display: inline-flex; align-items: center; gap: 4px; }
+    .precise select { font: inherit; padding: 2px 4px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); }
+    .precise button { font-family: var(--sans); margin-left: 6px; padding: 0.25em 0.8em; }
+
+    /* ---------- Tour + log ---------- */
+    .below { display: grid; grid-template-columns: 3fr 2fr; gap: 14px; margin-top: 14px; }
+    @media (max-width: 760px) { .below { grid-template-columns: 1fr; } }
+    .tour-text { min-height: 4.8em; margin-bottom: 12px; }
+    .tour-text p:last-child { margin-bottom: 0; }
+    .tour-controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .tour-step { color: var(--muted); font-size: 0.85rem; margin-left: auto; }
+    .log { list-style: none; margin: 0; padding: 0; font-size: 0.85rem; max-height: 220px; overflow-y: auto; }
+    .log li { padding: 4px 0; border-bottom: 1px solid var(--border); }
+    .log li:last-child { border-bottom: none; }
+    .log code { font-size: 0.85em; }
+    .empty { color: var(--muted); font-style: italic; }
+
+    /* ---------- Prose ---------- */
+    .rules { padding-left: 1.2em; }
+    .rules li { margin-bottom: 0.5em; }
+    pre {
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 14px 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.5;
+    }
+    pre code { background: none; padding: 0; }
+    table.complexity { border-collapse: collapse; width: 100%; font-size: 0.95rem; margin: 0.5em 0 1.2em; }
+    .complexity th, .complexity td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+    .complexity th { font-weight: 600; color: var(--muted); font-size: 0.85rem; }
+    .complexity td:not(:first-child) { font-family: var(--mono); font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+  <main>
+    <nav class="crumbs"><a href="../../">Explainers</a><span>/</span><a href="../">Data Structures &amp; Algorithms</a></nav>
+    <h1>Union Find</h1>
+    <p class="lede">A tiny data structure that answers "are these two things connected?" in nearly constant time, using a forest of trees and two clever tricks.</p>
+
+    <h2>The problem</h2>
+    <p>Suppose you have a bunch of things (people, computers on a network, pixels in an image) and connections keep arriving: <em>Ana knows Ben</em>, <em>Ben knows Caro</em>. At any moment you want to ask: <strong>are these two in the same group?</strong> Ana and Caro are, through Ben.</p>
+    <p>Union Find (also called a <em>disjoint-set</em> structure) handles exactly two operations:</p>
+    <ul class="rules">
+      <li><code>union(a, b)</code> merges the group containing <code>a</code> with the group containing <code>b</code>.</li>
+      <li><code>find(x)</code> returns a <strong>representative</strong> for <code>x</code>'s group. Two things are connected exactly when <code>find(a) === find(b)</code>.</li>
+    </ul>
+    <p>It's the engine behind Kruskal's minimum spanning tree algorithm, detecting cycles in graphs, grouping pixels into connected regions, and figuring out which accounts belong to the same person.</p>
+
+    <h2>The idea: a forest of parent pointers</h2>
+    <p>Each group is stored as a <strong>tree</strong>, and the tree's <strong>root</strong> is the group's representative. Every element just remembers one thing, its <em>parent</em>. A root is its own parent.</p>
+    <ul class="rules">
+      <li><strong>find(x):</strong> follow parent pointers up from <code>x</code> until you reach a root.</li>
+      <li><strong>union(a, b):</strong> find both roots. If they're different, point one root at the other, and the two trees become one.</li>
+    </ul>
+    <p>The whole structure is a single array, <code>parent</code>, where <code>parent[i]</code> is the parent of element <code>i</code>. Below, you can see both the trees and the array they come from.</p>
+
+    <h2>Try it</h2>
+    <p>Choose <strong>Union</strong> and click two nodes to merge their groups, or choose <strong>Find</strong> and click a node to watch it walk up to its root. Colors show groups, and the little loop above a node marks a root. The guided tour walks through why the two checkboxes matter.</p>
+  </main>
+
+  <section class="playground" aria-label="Interactive union-find playground">
+    <div class="panel">
+      <div class="controls">
+        <div class="seg" role="group" aria-label="Click mode">
+          <button id="mode-union" aria-pressed="true">Union</button>
+          <button id="mode-find" aria-pressed="false">Find</button>
+        </div>
+        <label class="toggle"><input type="checkbox" id="opt-size"> Union by size</label>
+        <label class="toggle"><input type="checkbox" id="opt-compress"> Path compression</label>
+        <span class="spacer"></span>
+        <button id="reset">Reset</button>
+      </div>
+      <p class="hint" id="hint" aria-live="polite"></p>
+      <div class="forest-wrap">
+        <svg id="forest" role="img" aria-label="The union-find forest. Each node points to its parent; roots point to themselves."></svg>
+      </div>
+      <div class="stats" aria-live="polite">
+        <span>Groups: <b id="stat-sets"></b></span>
+        <span>Tallest tree: <b id="stat-height"></b></span>
+        <span>Last find: <b id="stat-hops"></b></span>
+      </div>
+      <div class="array-wrap"><table class="parents" id="parents" aria-label="The parent array"></table></div>
+      <div class="precise">
+        <form id="form-union">union( <select id="u-a" aria-label="First element"></select> , <select id="u-b" aria-label="Second element"></select> ) <button type="submit">Run</button></form>
+        <form id="form-find">find( <select id="f-x" aria-label="Element to find"></select> ) <button type="submit">Run</button></form>
+      </div>
+    </div>
+
+    <div class="below">
+      <div class="panel">
+        <h3>Guided tour: from slow to fast</h3>
+        <div class="tour-text" id="tour-text"></div>
+        <div class="tour-controls">
+          <button id="tour-back" hidden>← Back</button>
+          <button class="primary" id="tour-next">Start the tour</button>
+          <span class="tour-step" id="tour-step"></span>
+        </div>
+      </div>
+      <div class="panel">
+        <h3>Operation log</h3>
+        <ul class="log" id="log"></ul>
+      </div>
+    </div>
+  </section>
+
+  <main style="padding-top: 0">
+    <h2>Trick 1: union by size</h2>
+    <p>With naive union, an unlucky order of merges builds a long chain, and <code>find</code> on the bottom element has to walk all of it: <strong>O(n)</strong> per call.</p>
+    <p>The fix is to keep track of each tree's size and <strong>always hang the smaller tree under the larger one</strong>. An element only gets deeper when its tree is merged into one at least as big, which at least doubles the size of its tree. A tree can only double <code>log₂ n</code> times, so no tree is ever taller than <code>log₂ n</code>. (Union by <em>rank</em>, which compares tree heights instead of sizes, gives the same guarantee.)</p>
+
+    <h2>Trick 2: path compression</h2>
+    <p><code>find(x)</code> walks from <code>x</code> to the root anyway, so on the way back it can <strong>repoint every node on that path directly at the root</strong>. The first <code>find</code> pays for the walk, and every later <code>find</code> on those nodes takes a single hop. The trees flatten themselves as you use them.</p>
+
+    <h2>How fast is it?</h2>
+    <table class="complexity">
+      <thead><tr><th>Version</th><th>find / union</th></tr></thead>
+      <tbody>
+        <tr><td>Naive</td><td>O(n) worst case</td></tr>
+        <tr><td>Union by size</td><td>O(log n)</td></tr>
+        <tr><td>Path compression only</td><td>O(log n) amortized</td></tr>
+        <tr><td>Both together</td><td>O(α(n)) amortized</td></tr>
+      </tbody>
+    </table>
+    <p><code>α(n)</code> is the <strong>inverse Ackermann function</strong>, which grows so slowly that it's at most 4 for any <code>n</code> that fits in the universe. In practice, union find with both tricks costs a constant amount per operation. It takes about 15 lines of code.</p>
+
+<pre><code>class UnionFind {
+  constructor(n) {
+    this.parent = Array.from({ length: n }, (_, i) =&gt; i); // everyone is a root
+    this.size = Array(n).fill(1);
+  }
+
+  find(x) {
+    if (this.parent[x] !== x)
+      this.parent[x] = this.find(this.parent[x]); // path compression
+    return this.parent[x];
+  }
+
+  union(a, b) {
+    let ra = this.find(a), rb = this.find(b);
+    if (ra === rb) return false;                       // already connected
+    if (this.size[ra] &lt; this.size[rb]) [ra, rb] = [rb, ra];
+    this.parent[rb] = ra;                              // smaller under larger
+    this.size[ra] += this.size[rb];
+    return true;
+  }
+}</code></pre>
+
+    <h2>Caveats</h2>
+    <ul class="rules">
+      <li><strong>No splitting.</strong> Union find can merge groups but can't take them apart. If connections can be deleted, you need a different structure.</li>
+      <li><strong>Elements are numbers.</strong> The array needs indices 0 to n−1. For names or other objects, keep a map from each object to its index.</li>
+      <li><strong>Deep recursion.</strong> The recursive <code>find</code> above is elegant, but a long chain could overflow the stack before compression flattens it. Production code often uses an iterative loop instead.</li>
+    </ul>
+
+    <footer>Part of <a href="../">Data Structures &amp; Algorithms</a> in <a href="../../">Explainers</a>.</footer>
+  </main>
+
+  <script>
+  const N = 10;
+  const $ = id => document.getElementById(id);
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
+  const darkQuery = matchMedia('(prefers-color-scheme: dark)');
+
+  // ---------- State ----------
+  let parent, size, entries, lastHops, hotPath, fresh, selected;
+  const opts = { bySize: false, compress: false };
+  let mode = 'union';
+  let busy = false;
+
+  function resetState() {
+    parent = Array.from({ length: N }, (_, i) => i);
+    size = Array(N).fill(1);
+    entries = [];
+    lastHops = null;
+    hotPath = [];
+    fresh = new Set();
+    selected = null;
+  }
+
+  // Path from x up to its root, inclusive. Does not modify anything.
+  function pathToRoot(x) {
+    const path = [x];
+    while (parent[x] !== x) { x = parent[x]; path.push(x); }
+    return path;
+  }
+  const rootOf = x => pathToRoot(x).at(-1);
+
+  // Point every node on the path straight at the root. Returns the nodes changed.
+  function compress(path) {
+    const root = path.at(-1);
+    const changed = [];
+    for (const v of path.slice(0, -1)) {
+      if (parent[v] !== root) { parent[v] = root; changed.push(v); }
+    }
+    return changed;
+  }
+
+  // ---------- Operations ----------
+  async function doUnion(a, b, animate) {
+    hotPath = [];
+    const pa = pathToRoot(a), pb = pathToRoot(b);
+    const ra = pa.at(-1), rb = pb.at(-1);
+    const notes = [];
+    if (opts.compress) {
+      const changed = [...compress(pa), ...compress(pb)];
+      changed.forEach(v => fresh.add(v));
+      if (changed.length) notes.push(`path compression repointed ${changed.join(', ')}`);
+    }
+    if (ra === rb) {
+      log(`union(${a}, ${b}): already in the same group (root ${ra}), so nothing to do`);
+      return render(animate);
+    }
+    let child, root;
+    if (opts.bySize) {
+      [child, root] = size[ra] < size[rb] ? [ra, rb] : [rb, ra];
+      notes.unshift(`smaller tree (size ${size[child]}) goes under larger (size ${size[root]})`);
+    } else {
+      [child, root] = [ra, rb];
+    }
+    parent[child] = root;
+    size[root] += size[child];
+    fresh.add(child);
+    log(`union(${a}, ${b}): root ${child} now points to root ${root}` + (notes.length ? `; ${notes.join('; ')}` : ''));
+    return render(animate);
+  }
+
+  async function doFind(x, animate) {
+    const path = pathToRoot(x);
+    const root = path.at(-1);
+    lastHops = path.length - 1;
+    if (animate && !reduceMotion.matches) {
+      for (let i = 1; i <= path.length; i++) {
+        hotPath = path.slice(0, i);
+        draw();
+        await sleep(380);
+      }
+    }
+    hotPath = path;
+    let changed = [];
+    if (opts.compress) {
+      changed = compress(path);
+      changed.forEach(v => fresh.add(v));
+    }
+    log(`find(${x}): reached root ${root} in ${lastHops} hop${lastHops === 1 ? '' : 's'}` +
+        (changed.length ? `; path compression repointed ${changed.join(', ')} to ${root}` : ''));
+    if (changed.length) hotPath = [x, root].filter((v, i, arr) => arr.indexOf(v) === i);
+    return render(animate);
+  }
+
+  function log(text) { entries.unshift(text); }
+
+  // ---------- Colors ----------
+  const HUES = [215, 25, 145, 280, 350, 48, 185, 320, 95, 250];
+  function colors(root) {
+    const h = HUES[root];
+    return darkQuery.matches
+      ? { stroke: `hsl(${h} 65% 66%)`, fill: `hsl(${h} 35% 21%)` }
+      : { stroke: `hsl(${h} 60% 42%)`, fill: `hsl(${h} 75% 93%)` };
+  }
+
+  // ---------- Layout + drawing ----------
+  const W = 824, SX = 56, SY = 74, PAD = 40, R = 19;
+  let pos = [], H = 0, animToken = 0;
+
+  function layout() {
+    const kids = Array.from({ length: N }, () => []);
+    for (let i = 0; i < N; i++) if (parent[i] !== i) kids[parent[i]].push(i);
+    const roots = [...Array(N).keys()].filter(i => parent[i] === i);
+    const grid = [];
+    let slot = 0, maxDepth = 0;
+    function place(v, d) {
+      maxDepth = Math.max(maxDepth, d);
+      if (!kids[v].length) { grid[v] = { x: slot++, y: d }; return; }
+      kids[v].forEach(c => place(c, d + 1));
+      const xs = kids[v].map(c => grid[c].x);
+      grid[v] = { x: (Math.min(...xs) + Math.max(...xs)) / 2, y: d };
+    }
+    roots.forEach((r, i) => { if (i) slot += 0.5; place(r, 0); });
+    const contentW = (slot - 1) * SX;
+    const offset = (W - contentW) / 2;
+    return {
+      pts: grid.map(p => ({ x: offset + p.x * SX, y: PAD + 14 + p.y * SY })),
+      h: PAD * 2 + 14 + Math.max(maxDepth, 2) * SY,
+    };
+  }
+
+  function moveTo(animate) {
+    const target = layout();
+    const token = ++animToken;
+    if (!animate || !pos.length || reduceMotion.matches) {
+      pos = target.pts; H = target.h; draw();
+      return Promise.resolve();
+    }
+    const from = pos.map(p => ({ ...p })), fromH = H, t0 = performance.now(), D = 480;
+    return new Promise(resolve => {
+      function frame(now) {
+        if (token !== animToken) return resolve();
+        const t = Math.min(1, (now - t0) / D);
+        const e = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+        pos = from.map((p, i) => ({ x: p.x + (target.pts[i].x - p.x) * e, y: p.y + (target.pts[i].y - p.y) * e }));
+        H = fromH + (target.h - fromH) * e;
+        draw();
+        if (t < 1) requestAnimationFrame(frame); else resolve();
+      }
+      requestAnimationFrame(frame);
+    });
+  }
+
+  function draw() {
+    const svg = $('forest');
+    svg.setAttribute('viewBox', `0 0 ${W} ${H.toFixed(1)}`);
+    const hotEdges = new Set();
+    for (let i = 0; i + 1 < hotPath.length; i++) hotEdges.add(hotPath[i] + '>' + hotPath[i + 1]);
+    const hotNodes = new Set(hotPath);
+
+    let s = `<defs>
+      <marker id="arr" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" style="fill:var(--muted)"/></marker>
+      <marker id="arr-hot" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" style="fill:var(--accent)"/></marker>
+    </defs>`;
+
+    // Edges: child -> parent, plus a small self-loop above each root.
+    for (let i = 0; i < N; i++) {
+      const p = pos[i];
+      if (parent[i] === i) {
+        const y = p.y - R;
+        s += `<path class="edge" d="M${p.x - 7} ${y + 1} C${p.x - 22} ${y - 24} ${p.x + 22} ${y - 24} ${p.x + 7} ${y + 1}" marker-end="url(#arr)"/>`;
+        continue;
+      }
+      const q = pos[parent[i]];
+      const dx = q.x - p.x, dy = q.y - p.y, len = Math.hypot(dx, dy) || 1;
+      const ux = dx / len, uy = dy / len;
+      const hot = hotEdges.has(i + '>' + parent[i]);
+      s += `<line class="edge${hot ? ' hot' : ''}" x1="${(p.x + ux * R).toFixed(1)}" y1="${(p.y + uy * R).toFixed(1)}" x2="${(q.x - ux * (R + 3)).toFixed(1)}" y2="${(q.y - uy * (R + 3)).toFixed(1)}" marker-end="url(#${hot ? 'arr-hot' : 'arr'})"/>`;
+    }
+
+    // Nodes.
+    for (let i = 0; i < N; i++) {
+      const p = pos[i];
+      const c = colors(rootOf(i));
+      s += `<g class="node${hotNodes.has(i) ? ' hot' : ''}" data-id="${i}" transform="translate(${p.x.toFixed(1)} ${p.y.toFixed(1)})">`;
+      if (selected === i) s += `<circle class="ring" r="${R + 6}"/>`;
+      s += `<circle class="body" r="${R}" style="fill:${c.fill};stroke:${c.stroke};stroke-width:2.5"/><text>${i}</text></g>`;
+    }
+    svg.innerHTML = s;
+  }
+
+  function treeHeight() {
+    let h = 0;
+    for (let i = 0; i < N; i++) h = Math.max(h, pathToRoot(i).length - 1);
+    return h;
+  }
+
+  function renderPanels() {
+    // Stats
+    const groups = parent.filter((p, i) => p === i).length;
+    $('stat-sets').textContent = groups;
+    $('stat-height').textContent = treeHeight();
+    $('stat-hops').textContent = lastHops == null ? '–' : `${lastHops} hop${lastHops === 1 ? '' : 's'}`;
+
+    // Parent array
+    const idx = '<tr class="idx"><th scope="row">i</th>' + parent.map((_, i) => `<td>${i}</td>`).join('') + '</tr>';
+    const par = '<tr class="par"><th scope="row">parent[i]</th>' + parent.map((p, i) => {
+      const c = colors(rootOf(i));
+      const cls = [p === i ? 'root' : '', fresh.has(i) ? 'fresh' : ''].join(' ').trim();
+      return `<td class="${cls}" style="background:${c.fill};border-color:${p === i ? c.stroke : 'transparent'}" title="${p === i ? `${i} is a root` : `parent of ${i} is ${p}`}">${p}</td>`;
+    }).join('') + '</tr>';
+    $('parents').innerHTML = idx + par;
+    fresh.clear();
+
+    // Log
+    const logEl = $('log');
+    logEl.replaceChildren(...(entries.length
+      ? entries.map(t => Object.assign(document.createElement('li'), { textContent: t }))
+      : [Object.assign(document.createElement('li'), { className: 'empty', textContent: 'Nothing yet. Union two nodes to start.' })]));
+
+    // Controls reflect state
+    $('opt-size').checked = opts.bySize;
+    $('opt-compress').checked = opts.compress;
+    $('mode-union').setAttribute('aria-pressed', mode === 'union');
+    $('mode-find').setAttribute('aria-pressed', mode === 'find');
+    $('hint').textContent = mode === 'find'
+      ? 'Click any node to find its root.'
+      : selected == null ? 'Click a node, then a second node, to union their groups.'
+      : `Selected ${selected}. Now click another node to union it with ${selected}, or click ${selected} again to cancel.`;
+    document.querySelectorAll('.playground button, .playground select, .playground input')
+      .forEach(b => { b.disabled = busy; });
+    if (!busy) renderTour();
+  }
+
+  function render(animate = false) {
+    renderPanels();
+    return moveTo(animate);
+  }
+
+  // Run an operation while blocking other input until its animation finishes.
+  async function run(fn) {
+    if (busy) return;
+    busy = true;
+    renderPanels();
+    try { await fn(); } finally { busy = false; renderPanels(); }
+  }
+
+  // ---------- Input ----------
+  $('forest').addEventListener('click', ev => {
+    const g = ev.target.closest('.node');
+    if (!g || busy) return;
+    const id = Number(g.dataset.id);
+    if (mode === 'find') return run(() => doFind(id, true));
+    if (selected == null) { selected = id; hotPath = []; render(); return; }
+    if (selected === id) { selected = null; render(); return; }
+    const a = selected; selected = null;
+    run(() => doUnion(a, id, true));
+  });
+
+  $('mode-union').addEventListener('click', () => { mode = 'union'; render(); });
+  $('mode-find').addEventListener('click', () => { mode = 'find'; selected = null; render(); });
+  $('opt-size').addEventListener('change', e => { opts.bySize = e.target.checked; render(); });
+  $('opt-compress').addEventListener('change', e => { opts.compress = e.target.checked; render(); });
+  $('reset').addEventListener('click', () => { tourStep = -1; resetState(); render(true); });
+
+  for (const id of ['u-a', 'u-b', 'f-x']) {
+    $(id).innerHTML = [...Array(N).keys()].map(i => `<option>${i}</option>`).join('');
+  }
+  $('u-b').value = '1';
+  $('form-union').addEventListener('submit', e => {
+    e.preventDefault();
+    selected = null;
+    run(() => doUnion(Number($('u-a').value), Number($('u-b').value), true));
+  });
+  $('form-find').addEventListener('submit', e => {
+    e.preventDefault();
+    run(() => doFind(Number($('f-x').value), true));
+  });
+
+  darkQuery.addEventListener('change', () => { renderPanels(); draw(); });
+
+  // ---------- Guided tour ----------
+  // Each step's run(animate) mutates state; Back replays steps without animation.
+  const chain = async animate => {
+    for (const [a, b] of [[0, 1], [1, 2], [2, 3], [3, 4]]) await doUnion(a, b, animate);
+  };
+  const tour = [
+    {
+      text: `<p>Ten elements, <code>0</code> to <code>9</code>, each in its own group. Every node is a root, so each one points to itself, and <code>parent[i] = i</code> for every <code>i</code>.</p><p>Both tricks are switched off for now.</p>`,
+      run: async () => { resetState(); opts.bySize = false; opts.compress = false; },
+    },
+    {
+      text: `<p><strong>union(0, 1)</strong> finds the root of each (0 and 1), then points one root at the other. Now <code>parent[0] = 1</code>, and node 1 is the representative of the group {0, 1}.</p>`,
+      run: animate => doUnion(0, 1, animate),
+    },
+    {
+      text: `<p>Keep going: <strong>union(1, 2)</strong>, <strong>union(2, 3)</strong>, <strong>union(3, 4)</strong>. Naive union always puts the first root under the second, and this order of merges builds a <strong>chain</strong>.</p>`,
+      run: chain,
+    },
+    {
+      text: `<p><strong>find(0)</strong> has to walk the whole chain, taking 4 hops to reach root 4. With <code>n</code> elements, a chain can be <code>n</code> long, so naive find is <strong>O(n)</strong>.</p>`,
+      run: animate => doFind(0, animate),
+    },
+    {
+      text: `<p><strong>Trick 1: union by size.</strong> Start over with it turned on and do the same four unions. Each time, the smaller tree goes under the larger one, so element 0's tree absorbs each new node. The chain becomes a star of height 1.</p>`,
+      run: async animate => { resetState(); opts.bySize = true; await render(animate); await chain(animate); },
+    },
+    {
+      text: `<p>Trees only get taller when two trees of <em>equal</em> size merge. Build two pairs, {5, 6} and {7, 8}, then merge them into a tree of height 2, then merge that into the size-5 tree.</p><p>Even then, the tallest tree has height 3. By-size trees never get taller than <code>log₂ n</code>.</p>`,
+      run: async animate => {
+        for (const [a, b] of [[5, 6], [7, 8], [5, 7], [0, 5]]) await doUnion(a, b, animate);
+      },
+    },
+    {
+      text: `<p><strong>Trick 2: path compression.</strong> Start over with union by size off and path compression on, and build the bad chain again. The chain still forms, because every union here starts at a root or one step below one.</p>`,
+      run: async animate => { resetState(); opts.bySize = false; opts.compress = true; await render(animate); await chain(animate); },
+    },
+    {
+      text: `<p><strong>find(0)</strong> walks 4 hops, the same as before. But on the way back, it repoints <em>every node on the path</em> straight at root 4.</p>`,
+      run: animate => doFind(0, animate),
+    },
+    {
+      text: `<p><strong>find(0)</strong> again: now it's <strong>1 hop</strong>. The expensive walk paid for itself, and the tree flattened itself as a side effect of being used.</p>`,
+      run: animate => doFind(0, animate),
+    },
+    {
+      text: `<p><strong>Use both tricks</strong> and every operation costs <code>O(α(n))</code> amortized, which is effectively constant. Both boxes are now checked. The playground is yours: try to build a tall tree with both tricks on. (It's hard.)</p>`,
+      run: async () => { resetState(); opts.bySize = true; opts.compress = true; },
+    },
+  ];
+  let tourStep = -1;
+
+  function renderTour() {
+    const back = $('tour-back'), next = $('tour-next');
+    back.hidden = tourStep < 0;
+    back.disabled = tourStep <= 0;
+    if (tourStep < 0) {
+      next.textContent = 'Start the tour';
+      $('tour-step').textContent = '';
+      $('tour-text').innerHTML = '<p>See how naive union find gets slow, then watch the two tricks fix it.</p>';
+      return;
+    }
+    $('tour-text').innerHTML = tour[tourStep].text;
+    $('tour-step').textContent = `Step ${tourStep + 1} of ${tour.length}`;
+    next.textContent = tourStep === tour.length - 1 ? 'Restart tour' : 'Next →';
+  }
+
+  $('tour-next').addEventListener('click', () => run(async () => {
+    tourStep = tourStep >= tour.length - 1 ? 0 : tourStep + 1;
+    selected = null;
+    await tour[tourStep].run(true);
+    await render(true);
+  }));
+
+  $('tour-back').addEventListener('click', () => run(async () => {
+    if (tourStep <= 0) return;
+    tourStep -= 1;
+    selected = null;
+    for (let i = 0; i <= tourStep; i++) await tour[i].run(false);
+    await render(false);
+  }));
+
+  resetState();
+  render();
+  </script>
+</body>
+</html>
