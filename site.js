@@ -25,6 +25,11 @@ const CATALOG = [
         title: 'Union Find',
         blurb: 'Track which things are connected using a forest of parent pointers, two small tricks, and nearly constant time.',
       },
+      {
+        slug: 'tarjan-scc',
+        title: "Tarjan's SCC algorithm",
+        blurb: 'Split a directed graph into strongly connected components with a single depth-first search, step by step.',
+      },
     ],
   },
 ];

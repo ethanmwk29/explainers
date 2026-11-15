@@ -102,7 +102,7 @@
     <p>Union Find (also called a <em>disjoint-set</em> structure) handles exactly two operations:</p>
     <ul class="rules">
       <li><code>union(a, b)</code> merges the group containing <code>a</code> with the group containing <code>b</code>.</li>
-      <li><code>find(x)</code> returns a <strong>representative</strong> for the group <code>x</code> is in. Every member of that group gets the same answer: <code>find(y)</code> returns that same value for every <code>y</code> in <code>x</code>'s group, and a different value for anything outside it. So two things are connected exactly when <code>find(a) === find(b)</code>.</li>
+      <li><code>find(x)</code> returns a <strong>representative</strong> for the group <code>x</code> is in. Every member of that group gets the same answer: <code>find(y)</code> returns that same value for every <code>y</code> in <code>x</code>'s group, and a different value for anything outside it. So two things are connected exactly when <code>find(a) == find(b)</code>.</li>
     </ul>
     <p>It's the engine behind Kruskal's minimum spanning tree algorithm, detecting cycles in graphs, grouping pixels into connected regions, and figuring out which accounts belong to the same person.</p>
 
@@ -181,28 +181,40 @@
         <tr><td>Both together</td><td>O(α(n)) amortized</td></tr>
       </tbody>
     </table>
-    <p><code>α(n)</code> is the <strong>inverse Ackermann function</strong>, which grows so slowly that it's at most 4 for any <code>n</code> that fits in the universe. In practice, union find with both tricks costs a constant amount per operation. It takes about 15 lines of code.</p>
+    <p><code>α(n)</code> is the <strong>inverse Ackermann function</strong>, which grows so slowly that it's at most 4 for any <code>n</code> that fits in the universe. In practice, union find with both tricks costs a constant amount per operation. Here's the whole thing in Go:</p>
 
-<pre><code>class UnionFind {
-  constructor(n) {
-    this.parent = Array.from({ length: n }, (_, i) =&gt; i); // everyone is a root
-    this.size = Array(n).fill(1);
-  }
+<pre><code>type UnionFind struct {
+	parent []int
+	size   []int
+}
 
-  find(x) {
-    if (this.parent[x] !== x)
-      this.parent[x] = this.find(this.parent[x]); // path compression
-    return this.parent[x];
-  }
+func NewUnionFind(n int) *UnionFind {
+	uf := &amp;UnionFind{parent: make([]int, n), size: make([]int, n)}
+	for i := range uf.parent {
+		uf.parent[i] = i // everyone starts as their own root
+		uf.size[i] = 1
+	}
+	return uf
+}
 
-  union(a, b) {
-    let ra = this.find(a), rb = this.find(b);
-    if (ra === rb) return false;                       // already connected
-    if (this.size[ra] &lt; this.size[rb]) [ra, rb] = [rb, ra];
-    this.parent[rb] = ra;                              // smaller under larger
-    this.size[ra] += this.size[rb];
-    return true;
-  }
+func (uf *UnionFind) Find(x int) int {
+	if uf.parent[x] != x {
+		uf.parent[x] = uf.Find(uf.parent[x]) // path compression
+	}
+	return uf.parent[x]
+}
+
+func (uf *UnionFind) Union(a, b int) bool {
+	ra, rb := uf.Find(a), uf.Find(b)
+	if ra == rb {
+		return false // already connected
+	}
+	if uf.size[ra] &lt; uf.size[rb] {
+		ra, rb = rb, ra
+	}
+	uf.parent[rb] = ra // smaller tree under larger
+	uf.size[ra] += uf.size[rb]
+	return true
 }</code></pre>
 
     <h2>Caveats</h2>

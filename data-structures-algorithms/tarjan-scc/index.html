@@ -1,0 +1,527 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tarjan's SCC Algorithm</title>
+  <meta name="description" content="An interactive, step-by-step explainer of Tarjan's strongly connected components algorithm.">
+  <link rel="stylesheet" href="../../style.css">
+  <style>
+    .playground {
+      width: min(1100px, calc(100vw - 32px));
+      margin: 1.6em 0 0;
+      position: relative;
+      left: 50%;
+      transform: translateX(-50%);
+    }
+    .panel {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 16px 18px; min-width: 0;
+    }
+    .panel h3 {
+      font-size: 0.75rem; text-transform: uppercase; letter-spacing: .08em;
+      color: var(--muted); margin: 0 0 8px; font-weight: 600;
+    }
+    .grid-top { display: grid; grid-template-columns: 2.2fr 1fr; gap: 14px; }
+    .grid-bottom { display: grid; grid-template-columns: 1.3fr 1fr; gap: 14px; margin-top: 14px; }
+    @media (max-width: 820px) { .grid-top, .grid-bottom { grid-template-columns: 1fr; } }
+
+    /* ---------- Toolbar ---------- */
+    .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+    .toolbar select {
+      font: inherit; font-size: 0.95rem; padding: 0.35em 0.5em; border-radius: 8px;
+      border: 1px solid var(--border); background: var(--bg); color: var(--text);
+    }
+    .toolbar .spacer { flex: 1; }
+    .toolbar label { font-size: 0.9rem; color: var(--muted); display: inline-flex; gap: 6px; align-items: center; }
+    .stepcount { font-size: 0.85rem; color: var(--muted); font-variant-numeric: tabular-nums; min-width: 8.5em; text-align: right; }
+
+    /* ---------- Graph ---------- */
+    .graph-wrap { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; }
+    #graph { display: block; width: 100%; height: auto; }
+    #graph text { font-family: var(--sans); pointer-events: none; }
+    #graph .label { font-size: 17px; font-weight: 700; text-anchor: middle; dominant-baseline: central; fill: var(--text); }
+    #graph .sub { font-size: 12.5px; text-anchor: middle; fill: var(--muted); font-variant-numeric: tabular-nums; }
+    #graph .edge { fill: none; stroke-width: 1.8; stroke: var(--muted); }
+    #graph .edge.tree { stroke: var(--text); stroke-width: 2.2; }
+    #graph .edge.stack { stroke: var(--accent); stroke-width: 2.2; stroke-dasharray: 6 4; }
+    #graph .edge.ignored { stroke: var(--border); }
+    #graph .halo-edge { fill: none; stroke: var(--fresh); stroke-width: 9; stroke-linecap: round; opacity: 0.85; }
+    #graph .node circle.body { stroke-width: 2; }
+    #graph .node.unvisited circle.body { fill: var(--surface); stroke: var(--muted); stroke-dasharray: 3 3; }
+    #graph .node.onstack circle.body { fill: var(--surface); stroke: var(--accent); stroke-width: 3.5; }
+    #graph .ring { fill: none; stroke: var(--accent); stroke-width: 2.5; }
+    #graph .halo { fill: var(--fresh); animation: halo 1.2s ease-out forwards; }
+    @keyframes halo { from { opacity: 0.9; } to { opacity: 0; } }
+
+    .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 10px; font-size: 0.82rem; color: var(--muted); align-items: center; }
+    .legend span { display: inline-flex; align-items: center; gap: 6px; }
+    .legend svg { flex: none; }
+
+    /* ---------- Side panels ---------- */
+    .side { display: grid; gap: 14px; align-content: start; }
+    .stack-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; min-height: 2em; }
+    .stack-list li {
+      font-weight: 700; padding: 3px 10px; border-radius: 6px;
+      border: 2px solid var(--accent); background: var(--surface);
+      display: flex; justify-content: space-between; align-items: center; font-size: 0.95rem;
+    }
+    .stack-list li small { font-weight: 400; color: var(--muted); font-size: 0.75rem; }
+    .path { font-weight: 600; font-size: 0.95rem; min-height: 1.5em; }
+    .scc-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+    .scc-list li { display: flex; gap: 8px; align-items: center; font-size: 0.95rem; }
+    .swatch { width: 14px; height: 14px; border-radius: 4px; border: 2px solid; flex: none; }
+    .scc-list .num { color: var(--muted); font-size: 0.8rem; min-width: 1.6em; }
+    .none { color: var(--muted); font-style: italic; font-size: 0.9rem; }
+
+    /* ---------- Narration + code ---------- */
+    .narration { font-size: 1rem; min-height: 6.5em; }
+    .narration p { margin: 0; }
+    .narration code { white-space: nowrap; }
+    pre.code {
+      margin: 0; font-size: 0.82rem; line-height: 1.6; overflow-x: auto;
+      background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 8px 0;
+    }
+    pre.code span { display: block; padding: 0 12px; border-left: 3px solid transparent; }
+    pre.code span.hl { background: color-mix(in srgb, var(--accent) 16%, transparent); border-left-color: var(--accent); }
+
+    /* ---------- Prose ---------- */
+    .rules { padding-left: 1.2em; }
+    .rules li { margin-bottom: 0.5em; }
+    pre.snippet {
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 14px 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.5;
+    }
+    pre.snippet code { background: none; padding: 0; }
+    figure.mini { margin: 1.4em 0; text-align: center; }
+    figure.mini svg { max-width: 100%; height: auto; }
+    figure.mini figcaption { color: var(--muted); font-size: 0.9rem; margin-top: 6px; }
+  </style>
+</head>
+<body>
+  <main>
+    <nav class="crumbs"><a href="../../">Explainers</a><span>/</span><a href="../">Data Structures &amp; Algorithms</a></nav>
+    <h1>Tarjan's strongly connected components algorithm</h1>
+    <p class="lede">One depth-first search, two numbers per vertex, and a stack are enough to split any directed graph into the groups of vertices that can all reach each other.</p>
+
+    <h2>What's a strongly connected component?</h2>
+    <p>In a directed graph, edges are one-way streets. Two vertices are <strong>strongly connected</strong> if you can get from each one to the other by following edges forward. A <strong>strongly connected component</strong> (SCC) is a maximal group in which every vertex can reach every other.</p>
+    <figure class="mini">
+      <svg viewBox="0 0 420 130" role="img" aria-label="Example: A, B and C form a cycle and are one component. D is reachable from C but cannot get back, so D is its own component.">
+        <defs><marker id="mini-arr" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" style="fill:var(--text)"/></marker></defs>
+        <rect x="18" y="8" width="252" height="114" rx="16" style="fill:none;stroke:var(--accent);stroke-dasharray:5 4"/>
+        <g style="stroke:var(--text);stroke-width:1.8;fill:none">
+          <line x1="80" y1="40" x2="176" y2="40" marker-end="url(#mini-arr)"/>
+          <line x1="204" y1="52" x2="152" y2="96" marker-end="url(#mini-arr)"/>
+          <line x1="118" y1="96" x2="70" y2="54" marker-end="url(#mini-arr)"/>
+          <line x1="218" y1="40" x2="334" y2="40" marker-end="url(#mini-arr)"/>
+        </g>
+        <g style="font:700 16px var(--sans);text-anchor:middle;dominant-baseline:central;fill:var(--text)">
+          <circle cx="60" cy="40" r="19" style="fill:var(--surface);stroke:var(--text);stroke-width:2"/><text x="60" y="40">A</text>
+          <circle cx="196" cy="40" r="19" style="fill:var(--surface);stroke:var(--text);stroke-width:2"/><text x="196" y="40">B</text>
+          <circle cx="135" cy="104" r="19" style="fill:var(--surface);stroke:var(--text);stroke-width:2"/><text x="135" y="104">C</text>
+          <circle cx="356" cy="40" r="19" style="fill:var(--surface);stroke:var(--text);stroke-width:2"/><text x="356" y="40">D</text>
+        </g>
+      </svg>
+      <figcaption>A, B and C form a cycle, so they're one component. B can reach D, but D can't get back, so D is a component by itself.</figcaption>
+    </figure>
+    <p>Every vertex belongs to exactly one SCC. Finding them is useful whenever cycles matter: spotting circular dependencies between modules or packages, finding deadlocks, solving 2-SAT problems, and simplifying a graph by collapsing each component into a single node.</p>
+
+    <h2>The three ideas</h2>
+    <p>Tarjan's algorithm does one depth-first search (DFS) and keeps three pieces of bookkeeping:</p>
+    <ul class="rules">
+      <li><strong>index[v]:</strong> the order in which the DFS first visits <code>v</code> (0, 1, 2, …).</li>
+      <li><strong>low[v]</strong> (the "low-link"): the smallest index that <code>v</code> is known to reach by going down its part of the DFS and then taking at most one edge back to a vertex that's still on the stack. If <code>low[v]</code> is smaller than <code>index[v]</code>, then <code>v</code> can get back to something visited before it, so it's part of an earlier vertex's component.</li>
+      <li><strong>A stack</strong> of vertices that have been visited but not yet assigned to a component. Each vertex is pushed when it's first visited and stays on the stack until its whole component is complete, even after the DFS has finished with it.</li>
+    </ul>
+    <p>The key moment comes when the DFS finishes a vertex <code>v</code> and finds <code>low[v] == index[v]</code>. Nothing reachable from <code>v</code> leads back to anything earlier, so <code>v</code> is the first-visited vertex, the <strong>root</strong>, of its component. Everything above <code>v</code> on the stack is in its component, so the algorithm pops them all off as one SCC.</p>
+
+    <h2>Step through it</h2>
+    <p>Use <strong>Next</strong> and <strong>Back</strong> (or the ← and → keys) to step through the algorithm, or press <strong>Play</strong>. The numbers under each vertex are <code>index / low</code>. Try the other example graphs too. In the DAG, every vertex is its own component.</p>
+  </main>
+
+  <section class="playground" aria-label="Step-by-step visualizer for Tarjan's algorithm">
+    <div class="grid-top">
+      <div class="panel">
+        <div class="toolbar">
+          <label>Graph
+            <select id="preset" aria-label="Example graph"></select>
+          </label>
+          <span class="spacer"></span>
+          <button id="btn-reset" title="Back to the start">⏮</button>
+          <button id="btn-back" title="Previous step (←)">← Back</button>
+          <button id="btn-next" class="primary" title="Next step (→)">Next →</button>
+          <button id="btn-play" title="Play / pause">▶ Play</button>
+          <select id="speed" aria-label="Playback speed">
+            <option value="1700">Slow</option>
+            <option value="1000" selected>Normal</option>
+            <option value="450">Fast</option>
+          </select>
+        </div>
+        <div class="graph-wrap">
+          <svg id="graph" role="img" aria-label="The directed graph being searched"></svg>
+        </div>
+        <div class="legend" aria-hidden="true">
+          <span><svg width="18" height="18"><circle cx="9" cy="9" r="7" style="fill:var(--surface);stroke:var(--muted);stroke-dasharray:3 3;stroke-width:1.5"/></svg>unvisited</span>
+          <span><svg width="18" height="18"><circle cx="9" cy="9" r="7" style="fill:var(--surface);stroke:var(--accent);stroke-width:3"/></svg>on the stack</span>
+          <span><svg width="18" height="18"><circle cx="9" cy="9" r="7" style="fill:hsl(145 60% 70%);stroke:hsl(145 60% 35%);stroke-width:1.5"/></svg>in a finished SCC</span>
+          <span><svg width="26" height="10"><line x1="1" y1="5" x2="25" y2="5" style="stroke:var(--text);stroke-width:2.2"/></svg>tree edge</span>
+          <span><svg width="26" height="10"><line x1="1" y1="5" x2="25" y2="5" style="stroke:var(--accent);stroke-width:2.2;stroke-dasharray:6 4"/></svg>edge to the stack</span>
+          <span><svg width="26" height="10"><line x1="1" y1="5" x2="25" y2="5" style="stroke:var(--border);stroke-width:2"/></svg>ignored edge</span>
+        </div>
+      </div>
+
+      <div class="side">
+        <div class="panel">
+          <h3>Stack (top first)</h3>
+          <ul class="stack-list" id="stack"></ul>
+        </div>
+        <div class="panel">
+          <h3>Current DFS path</h3>
+          <div class="path" id="path"></div>
+        </div>
+        <div class="panel">
+          <h3>Components found</h3>
+          <ul class="scc-list" id="sccs"></ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid-bottom">
+      <div class="panel">
+        <h3>What's happening <span class="stepcount" id="stepcount" style="float:right"></span></h3>
+        <div class="narration" id="narration" aria-live="polite"></div>
+      </div>
+      <div class="panel">
+        <h3>Pseudocode</h3>
+        <pre class="code" id="code"></pre>
+      </div>
+    </div>
+  </section>
+
+  <main style="padding-top: 0">
+    <h2>Why the "on the stack" check matters</h2>
+    <p>When the DFS meets an edge <code>v → w</code> to an already-visited vertex, there are two very different cases:</p>
+    <ul class="rules">
+      <li><strong>w is still on the stack.</strong> Its component isn't finished, and since <code>w</code> was visited earlier in the current search, <code>w</code> can reach <code>v</code>. Now <code>v</code> can reach <code>w</code> too, so they're in the same component. Update <code>low[v]</code>.</li>
+      <li><strong>w is off the stack.</strong> Its component is already finished. If <code>w</code> could reach <code>v</code>, they'd have been grouped together, so this edge leads into a different component, and the algorithm <strong>ignores</strong> it. In the first example graph, the edges <code>B → D</code> and <code>I → H</code> are like this.</li>
+    </ul>
+
+    <h2>A bonus: the order components come out in</h2>
+    <p>A component is only completed after every component it can reach is finished. So Tarjan's algorithm emits SCCs in <strong>reverse topological order</strong>: if you collapse each component into a single node, you get a DAG, and the list of components read backwards is a valid order to process it. Dependency resolvers use this directly. Build each component only after everything it depends on.</p>
+
+    <h2>How fast is it?</h2>
+    <p>Every vertex is visited once and every edge is looked at once, so the algorithm runs in <strong>O(V + E)</strong> time, the same as a single DFS. The stack and the two arrays take O(V) extra space.</p>
+    <p>The other well-known SCC algorithm, <strong>Kosaraju's</strong>, is also O(V + E) but needs two full passes: one DFS on the graph, then another on the graph with every edge reversed. Tarjan's does it in a single pass and never builds the reversed graph.</p>
+
+    <h2>The code</h2>
+<pre class="snippet"><code>// TarjanSCC returns the strongly connected components of a graph with
+// vertices 0..n-1, where graph[v] lists the vertices that v has edges to.
+func TarjanSCC(graph [][]int) [][]int {
+	n := len(graph)
+	index := make([]int, n)
+	low := make([]int, n)
+	onStack := make([]bool, n)
+	for i := range index {
+		index[i] = -1 // -1 means "no index yet"
+	}
+	var stack []int
+	var sccs [][]int
+	counter := 0
+
+	var strongconnect func(v int)
+	strongconnect = func(v int) {
+		index[v], low[v] = counter, counter
+		counter++
+		stack = append(stack, v)
+		onStack[v] = true
+
+		for _, w := range graph[v] {
+			if index[w] == -1 { // unvisited: recurse
+				strongconnect(w)
+				low[v] = min(low[v], low[w])
+			} else if onStack[w] { // on the stack: same SCC
+				low[v] = min(low[v], index[w])
+			} // else: w is in a finished SCC, ignore
+		}
+
+		if low[v] == index[v] { // v is the root of an SCC
+			var scc []int
+			for {
+				w := stack[len(stack)-1]
+				stack = stack[:len(stack)-1]
+				onStack[w] = false
+				scc = append(scc, w)
+				if w == v {
+					break
+				}
+			}
+			sccs = append(sccs, scc)
+		}
+	}
+
+	for v := range graph {
+		if index[v] == -1 {
+			strongconnect(v)
+		}
+	}
+	return sccs // in reverse topological order
+}</code></pre>
+
+    <h2>Caveats</h2>
+    <ul class="rules">
+      <li><strong>Recursion depth.</strong> On a graph with a very long path, the recursive version can overflow the call stack. Large-scale implementations use an explicit stack of (vertex, next-edge) pairs instead.</li>
+      <li><strong>Two ways to update low.</strong> For an edge to a vertex on the stack, some versions use <code>low[w]</code> instead of <code>index[w]</code>. Both find the same components. <code>index[w]</code> matches Tarjan's original paper and makes <code>low</code> easier to reason about.</li>
+      <li><strong>Use a set for the on-stack check.</strong> Scanning the stack for <code>w</code> would cost O(V) per edge. Keep a boolean slice (like <code>onStack</code> in the Go code above) so the check takes O(1).</li>
+    </ul>
+
+    <footer>Part of <a href="../">Data Structures &amp; Algorithms</a> in <a href="../../">Explainers</a>.</footer>
+  </main>
+
+  <script>
+  const $ = id => document.getElementById(id);
+  const darkQuery = matchMedia('(prefers-color-scheme: dark)');
+
+  // ---------- Example graphs ----------
+  const PRESETS = {
+    mixed: {
+      name: 'Mixed: five components',
+      h: 395,
+      nodes: { A: [70, 140], B: [185, 60], C: [185, 225], D: [330, 55], E: [320, 220], F: [450, 140], G: [575, 65], H: [580, 235], I: [450, 330], J: [300, 335] },
+      edges: 'A>B B>C B>D C>A C>E D>E E>F F>D F>G G>H I>J I>H J>I',
+    },
+    cycle: {
+      name: 'One big cycle',
+      h: 380,
+      nodes: { A: [320, 50], B: [475, 150], C: [415, 315], D: [225, 315], E: [165, 150] },
+      edges: 'A>B B>C C>D C>A D>E E>A',
+    },
+    dag: {
+      name: 'A DAG (no cycles)',
+      h: 360,
+      nodes: { A: [90, 180], B: [240, 80], C: [240, 280], D: [400, 180], E: [550, 180] },
+      edges: 'A>B A>C B>D C>D D>E',
+    },
+  };
+
+  // ---------- Run the algorithm, recording a snapshot after every step ----------
+  function buildTrace(p) {
+    const ids = Object.keys(p.nodes);
+    const adj = Object.fromEntries(ids.map(v => [v, []]));
+    p.edges.split(' ').forEach(e => { const [a, b] = e.split('>'); adj[a].push(b); });
+
+    const index = {}, low = {}, stack = [], sccs = [], sccOf = {}, edgeKind = {}, call = [];
+    let counter = 0;
+    const steps = [];
+    const snap = (line, msg, extra = {}) => steps.push({
+      line, msg,
+      index: { ...index }, low: { ...low }, stack: [...stack],
+      sccs: sccs.map(s => [...s]), sccOf: { ...sccOf }, edgeKind: { ...edgeKind },
+      call: [...call], cur: extra.focus ?? call.at(-1) ?? null,
+      edge: extra.edge ?? null, changed: extra.changed ?? [],
+    });
+
+    snap('init', `<p>No vertex has an index yet, and the stack is empty. The algorithm runs a depth-first search from each vertex that hasn't been visited yet, in alphabetical order.</p>`);
+
+    function strongconnect(v) {
+      index[v] = low[v] = counter++;
+      stack.push(v);
+      call.push(v);
+      snap('visit', `<p>Visit <b>${v}</b>. It gets the next index, so <code>index[${v}] = low[${v}] = ${index[v]}</code>, and it's pushed onto the stack.</p>`, { changed: [v] });
+
+      for (const w of adj[v]) {
+        const e = v + '>' + w;
+        if (index[w] === undefined) {
+          edgeKind[e] = 'tree';
+          snap('recurse', `<p>Edge <b>${v} → ${w}</b>: ${w} hasn't been visited, so recurse into it.</p>`, { edge: e });
+          strongconnect(w);
+          const old = low[v];
+          low[v] = Math.min(low[v], low[w]);
+          snap('after', `<p>Back at <b>${v}</b> after finishing ${w}. <code>low[${v}] = min(${old}, low[${w}] = ${low[w]}) = ${low[v]}</code>. ` +
+            (low[v] < old ? `Through ${w}, ${v} can reach back to an earlier vertex.` : `No change.`) + `</p>`,
+            { edge: e, changed: low[v] < old ? [v] : [] });
+        } else if (stack.includes(w)) {
+          edgeKind[e] = 'stack';
+          const old = low[v];
+          low[v] = Math.min(low[v], index[w]);
+          snap('onstack', `<p>Edge <b>${v} → ${w}</b>: ${w} is visited <em>and still on the stack</em>, so ${v} and ${w} are in the same component. <code>low[${v}] = min(${old}, index[${w}] = ${index[w]}) = ${low[v]}</code>. ` +
+            (low[v] < old ? `` : `No change.`) + `</p>`,
+            { edge: e, changed: low[v] < old ? [v] : [] });
+        } else {
+          edgeKind[e] = 'ignored';
+          snap('ignore', `<p>Edge <b>${v} → ${w}</b>: ${w} is already in a finished component. If ${w} could reach ${v}, it would have been grouped with ${v}, so this edge leads elsewhere. <b>Ignore it.</b></p>`, { edge: e });
+        }
+      }
+
+      if (low[v] === index[v]) {
+        const comp = [];
+        let w;
+        do { w = stack.pop(); comp.push(w); sccOf[w] = sccs.length; } while (w !== v);
+        sccs.push(comp);
+        snap('root', `<p>Finished ${v}'s edges, and <code>low[${v}] = index[${v}] = ${index[v]}</code>. Nothing reachable from ${v} leads back to an earlier vertex, so <b>${v} is the root of a component</b>. Pop the stack down to ${v}: <b>{${comp.join(', ')}}</b> is component #${sccs.length}.</p>`, { changed: comp });
+      } else {
+        snap('return', `<p>Finished ${v}'s edges, but <code>low[${v}] = ${low[v]}</code> is less than <code>index[${v}] = ${index[v]}</code>: ${v} can reach an earlier vertex that's still on the stack. So ${v} belongs to an ancestor's component. <b>Leave it on the stack</b> and return.</p>`);
+      }
+      call.pop();
+    }
+
+    for (const v of ids) {
+      if (index[v] === undefined) {
+        snap('start', `<p><b>${v}</b> hasn't been visited yet, so start a new depth-first search from ${v}.</p>`, { focus: v });
+        strongconnect(v);
+      }
+    }
+    snap('done', `<p><b>Done.</b> One depth-first search split the graph into ${sccs.length} component${sccs.length === 1 ? '' : 's'}. They came out in <em>reverse topological order</em>: each component was completed only after every component it can reach.</p>`);
+    return { steps, adj, ids };
+  }
+
+  // ---------- Pseudocode ----------
+  const CODE = [
+    ['start', 'for each vertex v:'],
+    ['start', '  if v has no index: strongconnect(v)'],
+    ['', ''],
+    ['', 'strongconnect(v):'],
+    ['visit', '  index[v] = low[v] = counter++'],
+    ['visit', '  push v onto the stack'],
+    ['', '  for each edge v → w:'],
+    ['recurse', '    if w has no index:'],
+    ['recurse', '      strongconnect(w)'],
+    ['after', '      low[v] = min(low[v], low[w])'],
+    ['onstack', '    else if w is on the stack:'],
+    ['onstack', '      low[v] = min(low[v], index[w])'],
+    ['ignore', '    else: ignore (w is in a finished SCC)'],
+    ['root', '  if low[v] == index[v]:'],
+    ['root', '    pop down to v → one new SCC'],
+    ['return', '  (otherwise v stays on the stack)'],
+  ];
+  $('code').innerHTML = CODE.map(([, t]) => `<span>${t.replace(/</g, '&lt;') || ' '}</span>`).join('');
+  const codeLines = [...$('code').children];
+
+  // ---------- Colors ----------
+  const HUES = [145, 25, 215, 320, 48, 280, 185, 350];
+  function sccColor(i) {
+    const h = HUES[i % HUES.length];
+    return darkQuery.matches
+      ? { stroke: `hsl(${h} 60% 62%)`, fill: `hsl(${h} 40% 28%)` }
+      : { stroke: `hsl(${h} 60% 35%)`, fill: `hsl(${h} 65% 82%)` };
+  }
+
+  // ---------- Drawing ----------
+  const R = 20, W = 650;
+  let preset, trace, step = 0, timer = null;
+
+  function edgeGeom(p, a, b) {
+    const [x1, y1] = p.nodes[a], [x2, y2] = p.nodes[b];
+    const curved = p.edges.split(' ').includes(b + '>' + a);
+    const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+    const dx = x2 - x1, dy = y2 - y1, len = Math.hypot(dx, dy);
+    const off = curved ? 26 : 0;
+    const cx = mx - (dy / len) * off, cy = my + (dx / len) * off;   // control point
+    const u1 = Math.hypot(cx - x1, cy - y1), u2 = Math.hypot(cx - x2, cy - y2);
+    const sx = x1 + (cx - x1) / u1 * R, sy = y1 + (cy - y1) / u1 * R;
+    const ex = x2 + (cx - x2) / u2 * (R + 3), ey = y2 + (cy - y2) / u2 * (R + 3);
+    return `M${sx.toFixed(1)} ${sy.toFixed(1)} Q${cx.toFixed(1)} ${cy.toFixed(1)} ${ex.toFixed(1)} ${ey.toFixed(1)}`;
+  }
+
+  const marker = (id, color) =>
+    `<marker id="${id}" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" style="fill:${color}"/></marker>`;
+
+  function drawGraph(s) {
+    const p = preset;
+    const svg = $('graph');
+    svg.setAttribute('viewBox', `0 0 ${W} ${p.h}`);
+    let out = '<defs>' + marker('m-def', 'var(--muted)') + marker('m-tree', 'var(--text)') +
+      marker('m-stack', 'var(--accent)') + marker('m-ignored', 'var(--border)') + '</defs>';
+
+    const edges = p.edges.split(' ').map(e => e.split('>'));
+    if (s.edge) out += `<path class="halo-edge" d="${edgeGeom(p, ...s.edge.split('>'))}"/>`;
+    for (const [a, b] of edges) {
+      const kind = s.edgeKind[a + '>' + b] || '';
+      const m = { tree: 'm-tree', stack: 'm-stack', ignored: 'm-ignored' }[kind] || 'm-def';
+      out += `<path class="edge ${kind}" d="${edgeGeom(p, a, b)}" marker-end="url(#${m})"/>`;
+    }
+
+    const onStack = new Set(s.stack);
+    for (const v of trace.ids) {
+      const [x, y] = p.nodes[v];
+      let cls = 'unvisited', style = '';
+      if (s.sccOf[v] !== undefined) {
+        const c = sccColor(s.sccOf[v]);
+        cls = 'done'; style = `fill:${c.fill};stroke:${c.stroke}`;
+      } else if (onStack.has(v)) cls = 'onstack';
+      out += `<g class="node ${cls}">`;
+      if (s.changed.includes(v)) out += `<circle class="halo" cx="${x}" cy="${y}" r="${R + 9}"/>`;
+      if (s.cur === v) out += `<circle class="ring" cx="${x}" cy="${y}" r="${R + 6}"/>`;
+      out += `<circle class="body" cx="${x}" cy="${y}" r="${R}" style="${style}"/>`;
+      out += `<text class="label" x="${x}" y="${y}">${v}</text>`;
+      const sub = s.index[v] === undefined ? '–' : `${s.index[v]} / ${s.low[v]}`;
+      out += `<text class="sub" x="${x}" y="${y + R + 16}">${sub}</text></g>`;
+    }
+    svg.innerHTML = out;
+  }
+
+  function show(i) {
+    step = Math.max(0, Math.min(trace.steps.length - 1, i));
+    const s = trace.steps[step];
+    drawGraph(s);
+
+    // Stack, top first
+    const stackEl = $('stack');
+    stackEl.innerHTML = s.stack.length
+      ? [...s.stack].reverse().map((v, k) => `<li>${v}<small>${k === 0 ? 'top · ' : ''}index ${s.index[v]}</small></li>`).join('')
+      : '<li class="none" style="border:none;padding:0;font-weight:400">empty</li>';
+
+    $('path').innerHTML = s.call.length ? s.call.join(' → ') : '<span class="none">not searching</span>';
+
+    $('sccs').innerHTML = s.sccs.length
+      ? s.sccs.map((c, k) => {
+          const col = sccColor(k);
+          return `<li><span class="num">#${k + 1}</span><span class="swatch" style="background:${col.fill};border-color:${col.stroke}"></span>{${c.join(', ')}}</li>`;
+        }).join('')
+      : '<li class="none">none yet</li>';
+
+    $('narration').innerHTML = s.msg;
+    $('stepcount').textContent = `step ${step + 1} of ${trace.steps.length}`;
+    codeLines.forEach((el, k) => el.classList.toggle('hl', CODE[k][0] === s.line && s.line !== ''));
+
+    $('btn-back').disabled = step === 0;
+    $('btn-reset').disabled = step === 0;
+    $('btn-next').disabled = step === trace.steps.length - 1;
+    if (step === trace.steps.length - 1) stop();
+  }
+
+  // ---------- Controls ----------
+  function stop() {
+    clearInterval(timer); timer = null;
+    $('btn-play').textContent = '▶ Play';
+  }
+  function play() {
+    if (step === trace.steps.length - 1) show(0);
+    $('btn-play').textContent = '❚❚ Pause';
+    timer = setInterval(() => show(step + 1), Number($('speed').value));
+  }
+  function loadPreset(key) {
+    stop();
+    preset = PRESETS[key];
+    trace = buildTrace(preset);
+    show(0);
+  }
+
+  $('preset').innerHTML = Object.entries(PRESETS).map(([k, p]) => `<option value="${k}">${p.name}</option>`).join('');
+  $('preset').addEventListener('change', e => loadPreset(e.target.value));
+  $('btn-next').addEventListener('click', () => { stop(); show(step + 1); });
+  $('btn-back').addEventListener('click', () => { stop(); show(step - 1); });
+  $('btn-reset').addEventListener('click', () => { stop(); show(0); });
+  $('btn-play').addEventListener('click', () => (timer ? stop() : play()));
+  $('speed').addEventListener('change', () => { if (timer) { stop(); play(); } });
+  document.addEventListener('keydown', e => {
+    if (e.target.closest('input, select, textarea') || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.key === 'ArrowRight') { stop(); show(step + 1); e.preventDefault(); }
+    if (e.key === 'ArrowLeft') { stop(); show(step - 1); e.preventDefault(); }
+  });
+  darkQuery.addEventListener('change', () => show(step));
+
+  loadPreset('mixed');
+  </script>
+</body>
+</html>

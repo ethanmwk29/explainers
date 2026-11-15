@@ -206,36 +206,53 @@
     <p>Because of these properties, any two replicas that have seen the same operations hold the same state, no matter how messages were delayed, reordered or repeated. That guarantee is called <strong>strong eventual consistency</strong>. You can test it in the playground: sync in any order, as many times as you like, and once both replicas have seen everything, the status says <em>Replicas agree</em>.</p>
 
     <h2>The whole thing in code</h2>
-    <p>This is essentially the code that runs the playground above:</p>
-<pre><code>class AddWinsSet {
-  constructor(replicaId) {
-    this.id = replicaId;
-    this.counter = 0;
-    this.adds = new Map();    // tag -> element
-    this.removed = new Set(); // tags that have been crossed out
-  }
+    <p>Here's the whole data structure in Go. The playground above runs the same logic.</p>
+<pre><code>type AddWinsSet struct {
+	id      string
+	counter int
+	adds    map[string]string // tag -&gt; element
+	removed map[string]bool   // tags that have been crossed out
+}
 
-  add(element) {
-    const tag = this.id + (++this.counter);  // unique: "A1", "A2", ...
-    this.adds.set(tag, element);
-  }
+func NewAddWinsSet(replicaID string) *AddWinsSet {
+	return &amp;AddWinsSet{
+		id:      replicaID,
+		adds:    map[string]string{},
+		removed: map[string]bool{},
+	}
+}
 
-  remove(element) {
-    // Cross out only the tags this replica has observed.
-    for (const [tag, el] of this.adds)
-      if (el === element) this.removed.add(tag);
-  }
+func (s *AddWinsSet) Add(element string) {
+	s.counter++
+	tag := fmt.Sprintf("%s%d", s.id, s.counter) // unique: "A1", "A2", ...
+	s.adds[tag] = element
+}
 
-  has(element) {
-    for (const [tag, el] of this.adds)
-      if (el === element &amp;&amp; !this.removed.has(tag)) return true;
-    return false;
-  }
+func (s *AddWinsSet) Remove(element string) {
+	// Cross out only the tags this replica has observed.
+	for tag, el := range s.adds {
+		if el == element {
+			s.removed[tag] = true
+		}
+	}
+}
 
-  merge(other) {
-    for (const [tag, el] of other.adds) this.adds.set(tag, el);
-    for (const tag of other.removed) this.removed.add(tag);
-  }
+func (s *AddWinsSet) Has(element string) bool {
+	for tag, el := range s.adds {
+		if el == element &amp;&amp; !s.removed[tag] {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *AddWinsSet) Merge(other *AddWinsSet) {
+	for tag, el := range other.adds {
+		s.adds[tag] = el
+	}
+	for tag := range other.removed {
+		s.removed[tag] = true
+	}
 }</code></pre>
 
     <h2>Caveats and variations</h2>
