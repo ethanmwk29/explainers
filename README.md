@@ -5,6 +5,7 @@ Small, interactive explainers, served with GitHub Pages at https://ethanmwk29.gi
 **Distributed Systems**
 - [The add-wins set](https://ethanmwk29.github.io/explainers/distributed-systems/add-wins-set/): an interactive walkthrough of the OR-Set CRDT.
 - [Scuttlebutt gossip](https://ethanmwk29.github.io/explainers/distributed-systems/scuttlebutt/): efficient reconciliation and flow control for anti-entropy gossip.
+- [Vector clocks](https://ethanmwk29.github.io/explainers/distributed-systems/vector-clocks/): happened-before, Lamport clocks, and detecting concurrency with one counter per process.
 
 **Data Structures & Algorithms**
 - [Union Find](https://ethanmwk29.github.io/explainers/data-structures-algorithms/union-find/): parent pointers, union by size, and path compression.
