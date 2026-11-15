@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Union Find</title>
   <meta name="description" content="An interactive explainer of the union-find (disjoint set) data structure.">
-  <link rel="stylesheet" href="../../style.css?v=2">
+  <link rel="stylesheet" href="../../style.css?v=3">
   <script src="../../theme.js"></script>
   <style>
     .playground {
@@ -364,20 +364,31 @@ func (uf *UnionFind) Union(a, b int) bool {
   function moveTo(animate) {
     const target = layout();
     const token = ++animToken;
-    if (!animate || !pos.length || reduceMotion.matches) {
+    if (!animate || !pos.length || reduceMotion.matches || document.hidden) {
       pos = target.pts; H = target.h; draw();
       return Promise.resolve();
     }
     const from = pos.map(p => ({ ...p })), fromH = H, t0 = performance.now(), D = 480;
     return new Promise(resolve => {
+      let done = false;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        if (token === animToken) { pos = target.pts; H = target.h; draw(); }
+        resolve();
+      };
+      // Animation frames pause in background tabs (and some headless browsers),
+      // so never let the controls stay locked waiting for them.
+      setTimeout(finish, D + 250);
       function frame(now) {
-        if (token !== animToken) return resolve();
+        if (done) return;
+        if (token !== animToken) return finish();
         const t = Math.min(1, (now - t0) / D);
         const e = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
         pos = from.map((p, i) => ({ x: p.x + (target.pts[i].x - p.x) * e, y: p.y + (target.pts[i].y - p.y) * e }));
         H = fromH + (target.h - fromH) * e;
         draw();
-        if (t < 1) requestAnimationFrame(frame); else resolve();
+        if (t < 1) requestAnimationFrame(frame); else finish();
       }
       requestAnimationFrame(frame);
     });
@@ -527,7 +538,7 @@ func (uf *UnionFind) Union(a, b int) bool {
     },
     {
       text: `<p>Keep going: <strong>union(1, 2)</strong>, <strong>union(2, 3)</strong>, <strong>union(3, 4)</strong>. Naive union always puts the first root under the second, and this order of merges builds a <strong>chain</strong>.</p>`,
-      run: chain,
+      run: async animate => { for (const [a, b] of [[1, 2], [2, 3], [3, 4]]) await doUnion(a, b, animate); },
     },
     {
       text: `<p><strong>find(0)</strong> has to walk the whole chain, taking 4 hops to reach root 4. With <code>n</code> elements, a chain can be <code>n</code> long, so naive find is <strong>O(n)</strong>.</p>`,

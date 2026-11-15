@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Tarjan's SCC Algorithm</title>
   <meta name="description" content="An interactive, step-by-step explainer of Tarjan's strongly connected components algorithm.">
-  <link rel="stylesheet" href="../../style.css?v=2">
+  <link rel="stylesheet" href="../../style.css?v=3">
   <script src="../../theme.js"></script>
   <style>
     .playground {
@@ -60,11 +60,13 @@
     .stepcount { font-size: 0.85rem; color: var(--muted); font-variant-numeric: tabular-nums; min-width: 8.5em; text-align: right; }
 
     /* ---------- Graph ---------- */
-    .graph-wrap { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; }
+    .graph-wrap { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; overflow-x: auto; }
+    @media (max-width: 560px) { #graph { min-width: 500px; } }
     #graph { display: block; width: 100%; height: auto; }
     #graph text { font-family: var(--sans); pointer-events: none; }
     #graph .label { font-size: 17px; font-weight: 700; text-anchor: middle; dominant-baseline: central; fill: var(--text); }
-    #graph .sub { font-size: 12.5px; text-anchor: middle; fill: var(--muted); font-variant-numeric: tabular-nums; }
+    #graph .sub { font-size: 12.5px; text-anchor: middle; fill: var(--muted); font-variant-numeric: tabular-nums;
+      paint-order: stroke; stroke: var(--bg); stroke-width: 4px; stroke-linejoin: round; }
     #graph .edge { fill: none; stroke-width: 1.8; stroke: var(--muted); }
     #graph .edge.tree { stroke: var(--text); stroke-width: 2.2; }
     #graph .edge.stack { stroke: var(--accent); stroke-width: 2.2; stroke-dasharray: 6 4; }
@@ -192,9 +194,7 @@
       <div class="col-main">
       <div class="panel">
         <div class="toolbar">
-          <label>Graph
-            <select id="preset" aria-label="Example graph"></select>
-          </label>
+          <select id="preset" aria-label="Example graph"></select>
           <span class="spacer"></span>
           <button id="btn-reset" title="Back to the start">⏮</button>
           <button id="btn-back" title="Previous step (←)">← Back</button>
