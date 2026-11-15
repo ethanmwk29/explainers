@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Minimum Spanning Trees</title>
   <meta name="description" content="An interactive explainer of minimum spanning trees: the cut property, Kruskal's algorithm and Prim's algorithm.">
-  <link rel="stylesheet" href="../../style.css?v=5">
+  <link rel="stylesheet" href="../../style.css?v=6">
   <script src="../../theme.js"></script>
   <style>
     :root { --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; }
@@ -199,7 +199,7 @@
     <ul class="rules">
       <li><strong>Ties.</strong> With repeated weights there can be several MSTs, all with the same total weight. Both algorithms still find one of them.</li>
       <li><strong>Negative weights are fine.</strong> Only the order of the weights matters, never their actual values. Adding a constant to every weight doesn't change the MST.</li>
-      <li><strong>It's not a shortest-path tree.</strong> The MST minimizes the <em>total</em> weight. The path between two vertices inside it can be much longer than their shortest path in the graph.</li>
+      <li><strong>It's not a shortest-path tree.</strong> The MST minimizes the <em>total</em> weight. The path between two vertices inside it can be much longer than their shortest path in the graph. For those, see <a href="../shortest-paths/">Shortest paths</a>.</li>
       <li><strong>Maximum spanning trees</strong> work the same way: sort heaviest-first, or negate the weights.</li>
       <li><strong>Directed graphs</strong> need a different algorithm. The directed version, a <em>minimum spanning arborescence</em>, is solved by the Chu–Liu/Edmonds algorithm.</li>
       <li><strong>Uses beyond cables:</strong> clustering (build the MST, then delete its <code>k − 1</code> heaviest edges to get <code>k</code> clusters), image segmentation, and a 2-approximation for the traveling salesperson problem when distances obey the triangle inequality.</li>

@@ -1,0 +1,473 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Shortest Paths</title>
+  <meta name="description" content="Cheapest paths in weighted graphs: when to use BFS, Dijkstra, Bellman–Ford or Floyd–Warshall, with Dijkstra and Bellman–Ford step by step, including what negative edges break.">
+  <link rel="stylesheet" href="../../style.css?v=6">
+  <script src="../../theme.js"></script>
+  <style>
+    :root { --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) { --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; }
+    }
+    :root[data-theme="dark"] { --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; }
+
+    .wide { width: min(1100px, calc(100vw - 32px)); margin: 1.6em 0 2.2em; position: relative; left: 50%; transform: translateX(-50%); }
+    .panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; min-width: 0; }
+    .panel h3 { font-size: 0.75rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 10px; font-weight: 600; }
+    .toolbar { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+    .toolbar .spacer { flex: 1; }
+    .toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 0.92rem; color: var(--text); cursor: pointer; }
+    .toggle input { accent-color: var(--accent); width: 16px; height: 16px; }
+    .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+    .seg button { border: none; border-radius: 0; background: var(--surface); }
+    .seg button + button { border-left: 1px solid var(--border); }
+    .seg button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
+    .two { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(260px, 1fr); gap: 14px; margin-top: 12px; align-items: start; }
+    .two > * { min-width: 0; }
+    @media (max-width: 860px) { .two { grid-template-columns: minmax(0, 1fr); } }
+
+    .graph-wrap { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; overflow-x: auto; }
+    svg.graph { display: block; width: 100%; height: auto; }
+    @media (max-width: 560px) { svg.graph { min-width: 540px; } }
+    .graph text { font-family: var(--sans); pointer-events: none; }
+    .graph .label { font-size: 16px; font-weight: 700; text-anchor: middle; dominant-baseline: central; fill: var(--text); }
+    .graph .dist { font-size: 13px; font-weight: 700; text-anchor: middle; fill: var(--text); font-variant-numeric: tabular-nums; paint-order: stroke; stroke: var(--bg); stroke-width: 4px; stroke-linejoin: round; }
+    .graph .dist.wrong { fill: var(--warn); }
+    .graph .dist.inf { fill: var(--muted); font-weight: 400; }
+    .graph .node circle { fill: var(--surface); stroke: var(--text); stroke-width: 2; }
+    .graph .node.clickable { cursor: pointer; }
+    .graph .node.clickable * { pointer-events: auto; }
+    .graph .node.done circle { fill: color-mix(in srgb, var(--s3) 22%, var(--surface)); stroke: var(--s3); stroke-width: 2.5; }
+    .graph .node.wrong circle { fill: color-mix(in srgb, var(--warn) 18%, var(--surface)); stroke: var(--warn); stroke-width: 3; }
+    .graph .ring { fill: none !important; stroke: var(--accent) !important; stroke-width: 2.5 !important; }
+    .graph .edge { stroke: var(--muted); stroke-width: 2; fill: none; }
+    .graph .edge.relaxed { stroke: var(--accent); stroke-width: 3.5; }
+    .graph .edge.tree { stroke: var(--text); stroke-width: 3.5; }
+    .graph .edge.path { stroke: var(--s3); stroke-width: 5; }
+    .graph .edge.neg { stroke-dasharray: 6 4; }
+    .graph .w-bg { fill: var(--bg); stroke: var(--border); }
+    .graph .w { font-size: 12.5px; font-weight: 600; text-anchor: middle; dominant-baseline: central; fill: var(--text); font-variant-numeric: tabular-nums; }
+    .graph .w.negw { fill: var(--warn); font-weight: 800; }
+    .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 10px; font-size: 0.82rem; color: var(--muted); align-items: center; }
+    .legend span { display: inline-flex; align-items: center; gap: 6px; }
+
+    .narration { min-height: 6em; }
+    .narration p { margin: 0 0 6px; }
+    .narration code { white-space: nowrap; }
+    pre.code { margin: 0 0 12px; font-size: 0.82rem; line-height: 1.6; overflow-x: auto; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 8px 0; }
+    pre.code span { display: block; padding: 0 12px; border-left: 3px solid transparent; }
+    pre.code span.hl { background: color-mix(in srgb, var(--accent) 16%, transparent); border-left-color: var(--accent); }
+    .stepcount { font-size: 0.85rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+    table.dists { border-collapse: collapse; width: 100%; font-size: 0.9rem; font-variant-numeric: tabular-nums; }
+    .dists th, .dists td { text-align: right; padding: 3px 6px; border-bottom: 1px solid var(--border); }
+    .dists th:first-child, .dists td:first-child { text-align: left; }
+    .dists th { color: var(--muted); font-weight: 500; font-size: 0.8rem; }
+    .dists td.bad { color: var(--warn); font-weight: 700; }
+    .dists td.good { color: var(--ok); }
+
+    .rules { padding-left: 1.2em; }
+    .rules li { margin-bottom: 0.5em; }
+    main h3 { margin: 1.8em 0 0.4em; font-size: 1.15rem; }
+    table.cmp { border-collapse: collapse; width: 100%; font-size: 0.93rem; margin: 0.6em 0 1.2em; }
+    .cmp th, .cmp td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+    .cmp thead th { color: var(--muted); font-weight: 600; font-size: 0.82rem; }
+    pre.snippet { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.5; }
+    pre.snippet code { background: none; padding: 0; }
+  </style>
+</head>
+<body>
+  <main>
+    <nav class="crumbs"><a href="../../">Explainers</a><span>/</span><a href="../">Data Structures &amp; Algorithms</a></nav>
+    <h1>Shortest paths</h1>
+    <p class="lede">The cheapest route from one vertex to all the others, when edges have costs. Which algorithm you need depends almost entirely on what the weights look like.</p>
+
+    <h2>Which algorithm?</h2>
+    <table class="cmp">
+      <thead><tr><th scope="col">Weights</th><th scope="col">Use</th><th scope="col">Time</th></tr></thead>
+      <tbody>
+        <tr><td>All the same (just count edges)</td><td><a href="../bfs-dfs/">BFS</a></td><td>O(V + E)</td></tr>
+        <tr><td>Only 0 or 1</td><td>0-1 BFS: a double-ended queue; 0-weight edges go to the front, 1-weight edges to the back</td><td>O(V + E)</td></tr>
+        <tr><td>Non-negative</td><td><strong>Dijkstra's algorithm</strong> with a priority queue</td><td>O((V + E) log V)</td></tr>
+        <tr><td>Some negative (and you need to detect negative cycles)</td><td><strong>Bellman–Ford</strong></td><td>O(V · E)</td></tr>
+        <tr><td>Every pair of vertices, small graph</td><td>Floyd–Warshall</td><td>O(V³)</td></tr>
+        <tr><td>One target, and a good estimate of the remaining distance (maps, games)</td><td>A*: Dijkstra that explores toward the target first</td><td>Usually much less than Dijkstra</td></tr>
+      </tbody>
+    </table>
+
+    <h2>The shared idea: relaxation</h2>
+    <p>Every algorithm here keeps a tentative distance <code>dist[v]</code> for each vertex: the cheapest way to reach <code>v</code> found <em>so far</em>. It starts at 0 for the source and ∞ for everything else. The only operation is <strong>relaxing</strong> an edge <code>u → v</code> with weight <code>w</code>:</p>
+    <div class="callout">If <code>dist[u] + w &lt; dist[v]</code>, then going through <code>u</code> is a cheaper way to reach <code>v</code>: set <code>dist[v] = dist[u] + w</code>, and remember <code>u</code> as <code>v</code>'s predecessor.</div>
+    <p>The algorithms differ only in <em>which edges they relax, in what order</em>. Following predecessors back from any vertex gives its actual cheapest path, and together they form a <strong>shortest-path tree</strong>.</p>
+    <ul class="rules">
+      <li><strong>Dijkstra</strong> is greedy. It repeatedly picks the unfinished vertex with the smallest tentative distance, declares that distance final, and relaxes its outgoing edges. This is correct because, with no negative edges, no later detour can ever come back cheaper: any other route has to pass through a vertex that's already at least as far away.</li>
+      <li><strong>Bellman–Ford</strong> is patient. It relaxes <em>every</em> edge, over and over. A cheapest path never repeats a vertex, so it has at most <code>V − 1</code> edges, and after pass <code>k</code>, every cheapest path of up to <code>k</code> edges has been found. So <code>V − 1</code> passes are always enough. If a <code>V</code>-th pass still improves something, there's a <strong>negative cycle</strong>: a loop you could go around forever to make the cost lower and lower.</li>
+    </ul>
+
+    <h2>Step through it</h2>
+    <p>Find the cheapest paths from <b>S</b>. The number under each vertex is its current tentative distance. Then try the toggles: make <code>F → C</code> negative to see Dijkstra get the wrong answer while Bellman–Ford still gets it right, or add a negative cycle to see Bellman–Ford detect it. When a run finishes, click any vertex to see its cheapest path.</p>
+  </main>
+
+  <section class="wide" aria-label="Dijkstra and Bellman–Ford step by step">
+    <div class="panel">
+      <div class="toolbar">
+        <div class="seg" role="group" aria-label="Algorithm">
+          <button data-alg="dijkstra" aria-pressed="true">Dijkstra</button>
+          <button data-alg="bf" aria-pressed="false">Bellman–Ford</button>
+        </div>
+        <label class="toggle"><input type="checkbox" id="neg"> Make F → C cost −4</label>
+        <label class="toggle"><input type="checkbox" id="negcycle"> Add E → C cost −5 (negative cycle)</label>
+        <span class="spacer"></span>
+        <button id="s-reset" title="Back to the start">⏮</button>
+        <button id="s-back" title="Previous step (←)">← Back</button>
+        <button id="s-next" class="primary" title="Next step (→)">Next →</button>
+        <button id="s-play">▶ Play</button>
+      </div>
+      <div class="two">
+        <div>
+          <div class="graph-wrap"><svg class="graph" id="s-graph" role="img" aria-label="Weighted directed graph"></svg></div>
+          <div class="legend" aria-hidden="true">
+            <span><svg width="18" height="18"><circle cx="9" cy="9" r="7" style="fill:color-mix(in srgb, var(--s3) 22%, var(--surface));stroke:var(--s3);stroke-width:2"/></svg>finalized (Dijkstra)</span>
+            <span><svg width="26" height="10"><line x1="1" y1="5" x2="25" y2="5" style="stroke:var(--accent);stroke-width:3.5"/></svg>just improved a distance</span>
+            <span><svg width="26" height="10"><line x1="1" y1="5" x2="25" y2="5" style="stroke:var(--text);stroke-width:3.5"/></svg>predecessor (shortest-path tree)</span>
+            <span><svg width="26" height="10"><line x1="1" y1="5" x2="25" y2="5" style="stroke:var(--s3);stroke-width:5"/></svg>cheapest path to the clicked vertex</span>
+          </div>
+          <div class="panel narration" style="margin-top:12px">
+            <h3>What's happening <span class="stepcount" id="s-count" style="float:right"></span></h3>
+            <div id="s-text" aria-live="polite"></div>
+          </div>
+        </div>
+        <div class="panel">
+          <h3>Pseudocode</h3>
+          <pre class="code" id="s-code"></pre>
+          <h3>Distances from S</h3>
+          <table class="dists" id="s-dists"></table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <main style="padding-top: 0">
+    <h3>Why a negative edge breaks Dijkstra</h3>
+    <p>Dijkstra's guarantee rests on one fact: once a vertex is the closest unfinished one, nothing found later can beat it, because every remaining route starts from a vertex that's at least as far away and can only get <em>more</em> expensive from there. A negative edge breaks that: a far-away vertex can have an edge that makes the total <em>cheaper</em>. In the example, C is finalized at 4 before F (at distance 6) is explored, and then <code>F → C</code> reveals a route to C costing 2. Dijkstra has already moved on, so C's improvement never reaches D, E and T.</p>
+    <p>(Some Dijkstra implementations re-add a vertex whenever its distance improves, even after it's been finished. With negative edges, that version gets the right answer when there's no negative cycle, but it loses its speed guarantee: in the worst case it takes exponential time. Use Bellman–Ford instead.)</p>
+
+    <h3>Variations worth knowing</h3>
+    <ul class="rules">
+      <li><strong>At most k edges.</strong> Run Bellman–Ford for exactly <code>k</code> passes, relaxing each pass from a copy of the previous pass's distances, so a single pass can't chain several edges together. That gives the cheapest path using at most <code>k</code> edges, a common interview twist ("cheapest flight with at most k stops").</li>
+      <li><strong>Floyd–Warshall</strong> computes all pairs with three nested loops: for each vertex <code>k</code>, for every pair <code>(i, j)</code>, try going through <code>k</code>. It handles negative edges, and a negative value on the diagonal means a negative cycle.</li>
+      <li><strong>Other "costs".</strong> The same machinery works for other ways of combining a path's edges. Maximum probability (multiply, take the max), or minimum effort (the cost of a path is its <em>largest</em> edge) both run with a Dijkstra-style priority queue.</li>
+      <li><strong>Undirected graphs</strong> are directed graphs with an edge in each direction. But a single negative undirected edge is already a negative cycle (go back and forth), so Bellman–Ford on undirected graphs only makes sense with non-negative weights.</li>
+    </ul>
+
+    <h2>The code</h2>
+    <p>Dijkstra (with a min-heap and a "finished" set) and Bellman–Ford (with early stopping and negative-cycle detection) in Go. Both are tested against Floyd–Warshall on thousands of random graphs, including negative weights and negative cycles for Bellman–Ford.</p>
+<pre class="snippet"><code>import (
+	"container/heap"
+	"math"
+)
+
+// Arc is a directed, weighted edge.
+type Arc struct{ From, To, Weight int }
+
+// Inf marks a vertex that can't be reached.
+const Inf = math.MaxInt
+
+// Dijkstra returns the shortest distance from src to every vertex.
+// Every weight must be non-negative.
+func Dijkstra(n int, arcs []Arc, src int) []int {
+	adj := make([][]Arc, n)
+	for _, a := range arcs {
+		adj[a.From] = append(adj[a.From], a)
+	}
+	dist := make([]int, n)
+	for i := range dist {
+		dist[i] = Inf
+	}
+	dist[src] = 0
+	done := make([]bool, n)
+	h := &amp;minHeap{{src, 0}}
+	for h.Len() &gt; 0 {
+		v := heap.Pop(h).(entry).v
+		if done[v] {
+			continue // an older, longer entry for a vertex we've already finished
+		}
+		done[v] = true // the closest unfinished vertex: its distance is final
+		for _, a := range adj[v] {
+			if d := dist[v] + a.Weight; d &lt; dist[a.To] {
+				dist[a.To] = d
+				heap.Push(h, entry{a.To, d})
+			}
+		}
+	}
+	return dist
+}
+
+// BellmanFord allows negative weights. negCycle is true if a negative cycle
+// can be reached from src, in which case some distances are meaningless.
+func BellmanFord(n int, arcs []Arc, src int) (dist []int, negCycle bool) {
+	dist = make([]int, n)
+	for i := range dist {
+		dist[i] = Inf
+	}
+	dist[src] = 0
+	for pass := 1; pass &lt; n; pass++ { // a shortest path has at most n-1 edges
+		changed := false
+		for _, a := range arcs {
+			if dist[a.From] != Inf &amp;&amp; dist[a.From]+a.Weight &lt; dist[a.To] {
+				dist[a.To] = dist[a.From] + a.Weight
+				changed = true
+			}
+		}
+		if !changed {
+			return dist, false // nothing improved, so nothing ever will
+		}
+	}
+	for _, a := range arcs { // one more pass: any improvement means a negative cycle
+		if dist[a.From] != Inf &amp;&amp; dist[a.From]+a.Weight &lt; dist[a.To] {
+			return dist, true
+		}
+	}
+	return dist, false
+}
+
+type entry struct{ v, dist int }
+type minHeap []entry
+
+func (h minHeap) Len() int           { return len(h) }
+func (h minHeap) Less(i, j int) bool { return h[i].dist &lt; h[j].dist }
+func (h minHeap) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
+func (h *minHeap) Push(x any)        { *h = append(*h, x.(entry)) }
+func (h *minHeap) Pop() any {
+	old := *h
+	x := old[len(old)-1]
+	*h = old[:len(old)-1]
+	return x
+}</code></pre>
+
+    <aside class="interview" aria-label="Interview notes">
+      <h2>Interview notes</h2>
+      <p><b>How often it comes up:</b> <strong>High for Dijkstra</strong>, moderate for Bellman–Ford, low for Floyd–Warshall. The most common trap is using Dijkstra when BFS would do, or BFS when edges have weights.</p>
+      <p><b>Be ready to:</b></p>
+      <ul><li>Write Dijkstra with a min-heap, including skipping stale heap entries.</li><li>Explain why Dijkstra needs non-negative weights, with a small counterexample.</li><li>Adapt Bellman–Ford to "at most k edges" by relaxing from a copy of the previous pass.</li><li>Recognize Dijkstra in disguise: when a path's cost is a max, a product, or a sum of grid values.</li></ul>
+      <p><b>Practice:</b></p>
+      <ul><li><span class="lc">LeetCode 743</span> · Network Delay Time: plain Dijkstra; the answer is the largest distance.</li><li><span class="lc">LeetCode 1631</span> · Path With Minimum Effort: Dijkstra where a path costs its largest step.</li><li><span class="lc">LeetCode 1514</span> · Path with Maximum Probability: Dijkstra with multiplication and a max-heap.</li><li><span class="lc">LeetCode 778</span> · Swim in Rising Water: minimize the highest point along the path.</li><li><span class="lc">LeetCode 787</span> · Cheapest Flights Within K Stops: Bellman–Ford limited to k + 1 passes.</li><li><span class="lc">LeetCode 1334</span> · Find the City With the Smallest Number of Neighbors at a Threshold Distance: Floyd–Warshall.</li><li><span class="lc">LeetCode 1091</span> · Shortest Path in Binary Matrix: unweighted, so BFS.</li></ul>
+    </aside>
+
+    <footer>Part of <a href="../">Data Structures &amp; Algorithms</a> in <a href="../../">Explainers</a>.</footer>
+  </main>
+
+  <script>
+  const $ = id => document.getElementById(id);
+
+  const NODES = { S: [70, 220], A: [220, 150], B: [220, 330], F: [245, 45], C: [400, 175], D: [400, 330], E: [580, 300], T: [720, 150] };
+  const IDS = ['S', 'A', 'B', 'C', 'D', 'E', 'F', 'T'];
+  const R = 20, W = 780, H = 400;
+  const INF = Infinity;
+
+  function makeGraph(neg, negCycle) {
+    let spec = 'S>A:4 S>B:1 B>A:2 A>C:1 B>D:5 C>D:1 C>E:6 D>E:2 D>T:7 E>T:1 S>F:6 ' + (neg ? 'F>C:-4' : 'F>C:3');
+    if (negCycle) spec += ' E>C:-5';
+    return spec.split(' ').map((s, id) => {
+      const [ab, w] = s.split(':'); const [a, b] = ab.split('>');
+      return { id, a, b, w: Number(w), name: `${a} → ${b}` };
+    });
+  }
+  const fmt = d => (d === INF ? '∞' : String(d));
+
+  function edgeGeom(edges, e) {
+    const [x1, y1] = NODES[e.a], [x2, y2] = NODES[e.b];
+    const curved = edges.some(f => f.a === e.b && f.b === e.a);
+    const mx = (x1 + x2) / 2, my = (y1 + y2) / 2, dx = x2 - x1, dy = y2 - y1, len = Math.hypot(dx, dy);
+    const off = curved ? 30 : 0;
+    const cx = mx - dy / len * off, cy = my + dx / len * off;
+    const u1 = Math.hypot(cx - x1, cy - y1) || 1, u2 = Math.hypot(cx - x2, cy - y2) || 1;
+    const sx = x1 + (cx - x1) / u1 * R, sy = y1 + (cy - y1) / u1 * R;
+    const ex = x2 + (cx - x2) / u2 * (R + 3), ey = y2 + (cy - y2) / u2 * (R + 3);
+    // Label at the curve's midpoint.
+    const lx = 0.25 * sx + 0.5 * cx + 0.25 * ex, ly = 0.25 * sy + 0.5 * cy + 0.25 * ey;
+    return { d: `M${sx.toFixed(1)} ${sy.toFixed(1)} Q${cx.toFixed(1)} ${cy.toFixed(1)} ${ex.toFixed(1)} ${ey.toFixed(1)}`, lx, ly };
+  }
+
+  function draw(edges, s, o = {}) {
+    const svg = $('s-graph');
+    svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    const marker = (id, c) => `<marker id="${id}" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" style="fill:${c}"/></marker>`;
+    let out = '<defs>' + marker('m-def', 'var(--muted)') + marker('m-acc', 'var(--accent)') + marker('m-txt', 'var(--text)') + marker('m-ok', 'var(--s3)') + '</defs>';
+    for (const e of edges) {
+      const g = edgeGeom(edges, e);
+      const cls = o.path && o.path.has(e.id) ? 'path' : s.relaxed.includes(e.id) ? 'relaxed' : s.pred && Object.values(s.pred).includes(e.id) ? 'tree' : '';
+      const m = { path: 'm-ok', relaxed: 'm-acc', tree: 'm-txt' }[cls] || 'm-def';
+      out += `<path class="edge ${cls} ${e.w < 0 ? 'neg' : ''}" d="${g.d}" marker-end="url(#${m})"/>`;
+    }
+    for (const e of edges) {
+      const g = edgeGeom(edges, e);
+      const wdt = String(e.w).length > 1 ? 30 : 24;
+      out += `<rect class="w-bg" x="${g.lx - wdt / 2}" y="${g.ly - 10}" width="${wdt}" height="20" rx="6"/><text class="w ${e.w < 0 ? 'negw' : ''}" x="${g.lx}" y="${g.ly}">${e.w}</text>`;
+    }
+    for (const v of IDS) {
+      const [x, y] = NODES[v];
+      const wrong = o.truth && o.truth[v] !== undefined && s.dist[v] !== o.truth[v];
+      out += `<g class="node ${wrong ? 'wrong' : s.done && s.done.includes(v) ? 'done' : ''} ${o.clickable ? 'clickable' : ''}" data-node="${v}">`;
+      if (s.cur === v) out += `<circle class="ring" cx="${x}" cy="${y}" r="${R + 6}"/>`;
+      out += `<circle cx="${x}" cy="${y}" r="${R}"/><text class="label" x="${x}" y="${y}">${v}</text>`;
+      const below = y + R + 17, above = y - R - 9;
+      const ty = v === 'F' ? y + R + 17 : (v === 'T' || v === 'A' || v === 'C' ? above : below);
+      out += `<text class="dist ${s.dist[v] === INF ? 'inf' : ''} ${wrong ? 'wrong' : ''}" x="${x}" y="${ty}">${fmt(s.dist[v])}${wrong ? ` (should be ${fmt(o.truth[v])})` : ''}</text>`;
+      if (o.clickable) out += `<title>Show the cheapest path from S to ${v}</title>`;
+      out += '</g>';
+    }
+    svg.innerHTML = out;
+  }
+
+  // Ground truth with Bellman–Ford run to completion (null if a negative cycle is reachable).
+  function truthOf(edges) {
+    const d = Object.fromEntries(IDS.map(v => [v, v === 'S' ? 0 : INF]));
+    for (let k = 1; k < IDS.length; k++) for (const e of edges) if (d[e.a] !== INF && d[e.a] + e.w < d[e.b]) d[e.b] = d[e.a] + e.w;
+    for (const e of edges) if (d[e.a] !== INF && d[e.a] + e.w < d[e.b]) return null;
+    return d;
+  }
+
+  function dijkstraTrace(edges) {
+    const dist = Object.fromEntries(IDS.map(v => [v, v === 'S' ? 0 : INF])), pred = {}, done = [], steps = [];
+    const snap = (line, msg, x = {}) => steps.push({ line, msg, dist: { ...dist }, pred: { ...pred }, done: [...done], cur: x.cur ?? null, relaxed: x.relaxed ?? [] });
+    snap('init', `<p>Start with <code>dist[S] = 0</code> and every other distance at ∞.</p>`);
+    while (true) {
+      const open = IDS.filter(v => !done.includes(v) && dist[v] !== INF).sort((a, b) => dist[a] - dist[b] || a.localeCompare(b));
+      if (!open.length) break;
+      const u = open[0];
+      done.push(u);
+      const notes = [], relaxed = [];
+      for (const e of edges.filter(e => e.a === u)) {
+        const nd = dist[u] + e.w;
+        if (nd < dist[e.b]) {
+          const late = done.includes(e.b);
+          notes.push(`<code>${e.name}</code>: ${dist[u]} + ${e.w} = ${nd} &lt; ${fmt(dist[e.b])}, so <code>dist[${e.b}] = ${nd}</code>` +
+            (late ? `. <b>But ${e.b} was already finalized</b>, and Dijkstra never revisits finished vertices, so this improvement won't reach anything after ${e.b}.` : ''));
+          dist[e.b] = nd; pred[e.b] = e.id; relaxed.push(e.id);
+        } else notes.push(`<code>${e.name}</code>: ${dist[u]} + ${e.w} = ${nd}, no better than ${fmt(dist[e.b])}`);
+      }
+      snap('pop', `<p>The closest unfinished vertex is <b>${u}</b> at <b>${dist[u]}</b>. Declare that final and relax its outgoing edges:</p>` +
+        (notes.length ? `<ul>${notes.map(n => `<li>${n}</li>`).join('')}</ul>` : '<p>It has no outgoing edges.</p>'), { cur: u, relaxed });
+    }
+    snap('', `<p><b>Done.</b> Every reachable vertex has been finalized.</p>`);
+    return steps;
+  }
+
+  function bfTrace(edges) {
+    const dist = Object.fromEntries(IDS.map(v => [v, v === 'S' ? 0 : INF])), pred = {}, steps = [];
+    const snap = (line, msg, x = {}) => steps.push({ line, msg, dist: { ...dist }, pred: { ...pred }, done: null, cur: null, relaxed: x.relaxed ?? [] });
+    snap('init', `<p>Start with <code>dist[S] = 0</code> and every other distance at ∞. Each pass relaxes all ${edges.length} edges, in the same order every time.</p>`);
+    let negCycle = false;
+    for (let pass = 1; pass <= IDS.length; pass++) {
+      const changed = [];
+      for (const e of edges) {
+        if (dist[e.a] !== INF && dist[e.a] + e.w < dist[e.b]) {
+          changed.push(`<code>${e.b}</code>: ${fmt(dist[e.b])} → ${dist[e.a] + e.w} via ${e.name}`);
+          dist[e.b] = dist[e.a] + e.w; pred[e.b] = e.id;
+          changed.push(e.id);
+        }
+      }
+      const ids = changed.filter(x => typeof x === 'number'), text = changed.filter(x => typeof x === 'string');
+      if (pass === IDS.length) {
+        if (ids.length) {
+          negCycle = true;
+          snap('check', `<p><b>Extra pass ${pass}</b> (one more than V − 1 = ${IDS.length - 1}): distances <em>still</em> improved (${text.join('; ')}). A cheapest path can't have more than ${IDS.length - 1} edges, so this can only mean a <b>negative cycle</b>: going around it lowers the cost forever. The distances below are meaningless.</p>`, { relaxed: ids });
+        }
+        break;
+      }
+      if (!ids.length) {
+        snap('stop', `<p><b>Pass ${pass}:</b> nothing improved, so nothing ever will. Stop early: every distance is final.</p>`);
+        break;
+      }
+      snap('pass', `<p><b>Pass ${pass}:</b> ${text.join('; ')}.</p><p class="note">After pass ${pass}, every cheapest path with at most ${pass} edge${pass === 1 ? '' : 's'} has been found.</p>`, { relaxed: ids });
+    }
+    snap('', negCycle
+      ? `<p><b>Negative cycle detected.</b> Bellman–Ford can't report shortest paths here, because there aren't any: you can always loop once more and pay less.</p>`
+      : `<p><b>Done.</b> These are the true cheapest distances, negative edges and all.</p>`);
+    return steps;
+  }
+
+  const CODE = {
+    dijkstra: [['init', 'dist[S] = 0; all others ∞'], ['', 'while some reachable vertex is unfinished:'], ['pop', '  u = unfinished vertex with smallest dist'], ['pop', '  mark u finished (dist[u] is final)'], ['pop', '  for each edge u → v with weight w:'], ['pop', '    dist[v] = min(dist[v], dist[u] + w)']],
+    bf: [['init', 'dist[S] = 0; all others ∞'], ['pass', 'repeat V − 1 times:'], ['pass', '  for every edge u → v with weight w:'], ['pass', '    dist[v] = min(dist[v], dist[u] + w)'], ['stop', '  (stop early if nothing changed)'], ['check', 'one more pass: if anything improves,'], ['check', '  there is a negative cycle']],
+  };
+
+  const st = { alg: 'dijkstra', edges: null, steps: null, truth: null, i: 0, timer: null, target: 'T' };
+  function load() {
+    stop();
+    st.edges = makeGraph($('neg').checked, $('negcycle').checked);
+    st.truth = truthOf(st.edges);
+    st.steps = st.alg === 'dijkstra' ? dijkstraTrace(st.edges) : bfTrace(st.edges);
+    $('s-code').innerHTML = CODE[st.alg].map(([, t]) => `<span>${t}</span>`).join('');
+    document.querySelectorAll('[data-alg]').forEach(b => b.setAttribute('aria-pressed', b.dataset.alg === st.alg));
+    show(0);
+  }
+  function pathTo(s, v) {
+    const ids = new Set();
+    let guard = 0;
+    while (v !== 'S' && s.pred[v] !== undefined && guard++ < 20) { const e = st.edges[s.pred[v]]; ids.add(e.id); v = e.a; }
+    return v === 'S' ? ids : new Set();
+  }
+  function show(i) {
+    st.i = Math.max(0, Math.min(st.steps.length - 1, i));
+    const s = st.steps[st.i];
+    const last = st.i === st.steps.length - 1;
+    const valid = st.truth !== null;
+    const allRight = last && valid && IDS.every(v => s.dist[v] === st.truth[v]);
+    const path = allRight && s.dist[st.target] !== INF ? pathTo(s, st.target) : null;
+    draw(st.edges, s, { truth: last && valid ? st.truth : null, path, clickable: allRight });
+    let text = s.msg;
+    if (last && valid) {
+      const wrong = IDS.filter(v => s.dist[v] !== st.truth[v]);
+      if (wrong.length) text += `<p style="color:var(--warn);font-weight:600">Wrong answer for ${wrong.join(', ')}.</p><p>Dijkstra finalized C at 4 before discovering the cheaper route through F, and never went back. Switch to Bellman–Ford to get the right distances.</p><p class="note">Its predecessor links are now inconsistent with its distances too, so no path is shown.</p>`;
+      const names = [];
+      if (path) { let v = st.target; names.unshift(v); while (v !== 'S') { v = st.edges[s.pred[v]].a; names.unshift(v); } }
+      if (path) text += `<p class="note">Cheapest path found to <b>${st.target}</b>: ${names.join(' → ')} (cost ${s.dist[st.target]}). Click another vertex to see its path.</p>`;
+    }
+    $('s-text').innerHTML = text;
+    $('s-count').textContent = `step ${st.i + 1} of ${st.steps.length}`;
+    $('s-dists').innerHTML = `<thead><tr><th scope="col">Vertex</th><th scope="col">Now</th><th scope="col">True</th></tr></thead><tbody>` +
+      IDS.map(v => {
+        const t = valid ? st.truth[v] : null;
+        const cls = last && valid ? (s.dist[v] === t ? 'good' : 'bad') : '';
+        return `<tr><td>${v}</td><td class="${cls}">${fmt(s.dist[v])}</td><td>${valid ? fmt(t) : '–'}</td></tr>`;
+      }).join('') + '</tbody>';
+    [...$('s-code').children].forEach((el, k) => el.classList.toggle('hl', s.line !== '' && CODE[st.alg][k][0] === s.line));
+    $('s-back').disabled = st.i === 0;
+    $('s-reset').disabled = st.i === 0;
+    $('s-next').disabled = last;
+    if (last) stop();
+  }
+  function stop() { clearInterval(st.timer); st.timer = null; $('s-play').textContent = '▶ Play'; }
+  $('s-play').addEventListener('click', () => {
+    if (st.timer) return stop();
+    if (st.i === st.steps.length - 1) show(0);
+    $('s-play').textContent = '❚❚ Pause';
+    st.timer = setInterval(() => show(st.i + 1), 1300);
+  });
+  $('s-next').addEventListener('click', () => { stop(); show(st.i + 1); });
+  $('s-back').addEventListener('click', () => { stop(); show(st.i - 1); });
+  $('s-reset').addEventListener('click', () => { stop(); show(0); });
+  document.querySelectorAll('[data-alg]').forEach(b => b.addEventListener('click', () => { st.alg = b.dataset.alg; load(); }));
+  $('neg').addEventListener('change', load);
+  $('negcycle').addEventListener('change', load);
+  $('s-graph').addEventListener('click', e => {
+    const n = e.target.closest('[data-node]');
+    if (!n || st.i !== st.steps.length - 1) return;
+    st.target = n.dataset.node;
+    show(st.i);
+  });
+  document.addEventListener('keydown', e => {
+    if (e.target.closest('input, select, textarea') || e.metaKey || e.ctrlKey || e.altKey) return;
+    const r = $('s-graph').getBoundingClientRect();
+    if (r.bottom < 0 || r.top > innerHeight) return;
+    if (e.key === 'ArrowRight') { stop(); show(st.i + 1); e.preventDefault(); }
+    if (e.key === 'ArrowLeft') { stop(); show(st.i - 1); e.preventDefault(); }
+  });
+  load();
+  </script>
+</body>
+</html>

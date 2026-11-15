@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Removable Edges</title>
   <meta name="description" content="Which edges can you remove from an undirected graph and keep it connected? Bridges, spanning trees, and the difference between one at a time and all at once.">
-  <link rel="stylesheet" href="../../style.css?v=5">
+  <link rel="stylesheet" href="../../style.css?v=6">
   <script src="../../theme.js"></script>
   <style>
     :root { --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; }
@@ -221,7 +221,7 @@
 
     <h2>All at once: spanning trees</h2>
     <p>For the second question, you want to keep as <em>few</em> edges as possible while staying connected. A connected graph on <code>V</code> vertices needs at least <code>V − 1</code> edges, and a <strong>spanning tree</strong> (a tree that touches every vertex) has exactly that many. So the most you can remove at once is <code>E − (V − 1)</code>, or <code>E − (V − c)</code> if the graph starts with <code>c</code> separate pieces.</p>
-    <p>Finding one is easy: BFS, DFS, or <a href="../union-find/">union find</a> all work in about O(V + E). With union find, walk the edges and keep each one only if <code>union(u, v)</code> actually merges two groups. Every rejected edge closes a cycle and can go.</p>
+    <p>Finding one is easy: <a href="../bfs-dfs/">BFS, DFS</a>, or <a href="../union-find/">union find</a> all work in about O(V + E). With union find, walk the edges and keep each one only if <code>union(u, v)</code> actually merges two groups. Every rejected edge closes a cycle and can go.</p>
 
     <h3>How the two answers fit together</h3>
     <ul class="rules">

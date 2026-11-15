@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Tarjan's SCC Algorithm</title>
   <meta name="description" content="An interactive, step-by-step explainer of Tarjan's strongly connected components algorithm.">
-  <link rel="stylesheet" href="../../style.css?v=5">
+  <link rel="stylesheet" href="../../style.css?v=6">
   <script src="../../theme.js"></script>
   <style>
     .playground {
@@ -263,7 +263,7 @@
     </ul>
 
     <h2>A bonus: the order components come out in</h2>
-    <p>A component is only completed after every component it can reach is finished. So Tarjan's algorithm emits SCCs in <strong>reverse topological order</strong>: if you collapse each component into a single node, you get a DAG, and the list of components read backwards is a valid order to process it. Dependency resolvers use this directly. Build each component only after everything it depends on.</p>
+    <p>A component is only completed after every component it can reach is finished. So Tarjan's algorithm emits SCCs in <strong>reverse topological order</strong>: if you collapse each component into a single node, you get a DAG, and the list of components read backwards is a valid order to process it. Dependency resolvers use this directly. Build each component only after everything it depends on. (More on ordering in <a href="../topological-sort/">Topological sort</a>.)</p>
 
     <h2>How fast is it?</h2>
     <p>Every vertex is visited once and every edge is looked at once, so the algorithm runs in <strong>O(V + E)</strong> time, the same as a single DFS. The stack and the two arrays take O(V) extra space.</p>
