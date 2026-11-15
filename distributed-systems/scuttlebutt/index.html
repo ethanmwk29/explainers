@@ -156,6 +156,14 @@
     pre.snippet code { background: none; padding: 0; }
     .formula { font-family: var(--mono); font-size: 0.9rem; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; margin: 0 0 1em; overflow-x: auto; }
     .cite { font-size: 0.92rem; color: var(--muted); }
+    table.models { border-collapse: collapse; width: 100%; font-size: 0.93rem; margin: 0.6em 0 1.2em; }
+    .models th, .models td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+    .models thead th { color: var(--muted); font-weight: 600; font-size: 0.82rem; }
+    .models tbody th { white-space: nowrap; }
+    .models td.yes, .models td.no { white-space: nowrap; font-weight: 600; }
+    .models td.yes { color: var(--ok); }
+    .models td.no { color: var(--muted); }
+    @media (max-width: 600px) { .models tbody th, .models td.yes, .models td.no { white-space: normal; } }
   </style>
 </head>
 <body>
@@ -244,6 +252,34 @@
     <h3>A surprising property</h3>
     <p>Step 6 of the tour shows something odd. P and Q have the same maximum for R, so they exchange nothing about R, even though Q holds newer versions of <code>b</code> and <code>c</code> than P does. A Scuttlebutt exchange doesn't try to remove every difference between two participants, even when there's room in the message.</p>
     <p>That turns out to be a feature. Q's newer copies are <em>already obsolete</em>: R has since moved on to even newer versions. Sending them would just mean reconciling those keys again later. Skipping them leaves room in the message for deltas that are actually current.</p>
+
+    <h2 id="consistency">What consistency does Scuttlebutt give you?</h2>
+    <p>Here's how Scuttlebutt lines up against <a href="https://jepsen.io/consistency/models">Jepsen's map of consistency models</a>. Treat each participant as one of Jepsen's <em>processes</em>: it reads from its own local copy and writes only its own keys. Scuttlebutt has no transactions, so only the single-object branch of the map applies (linearizable down through the session guarantees). The multi-object models, like serializability, aren't on the table.</p>
+    <table class="models">
+      <thead><tr><th scope="col">Model</th><th scope="col">Scuttlebutt?</th><th scope="col">Why</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">Linearizable</th><td class="no">✗ No</td><td>Reads come from the local copy, which can be stale, so a read can miss a write the owner has already finished.</td></tr>
+        <tr><th scope="row">Sequential</th><td class="no">✗ No</td><td>Two participants can see different owners' updates in opposite orders: X has P's new value but Q's old one, and Y has the reverse. No single order of operations explains both. (Jepsen also notes that sequential consistency can't be totally or sticky available, and Scuttlebutt reads never wait.)</td></tr>
+        <tr><th scope="row">Causal</th><td class="no">✗ No</td><td>It requires <em>writes follow reads</em>, which fails (next row).</td></tr>
+        <tr><th scope="row">Writes follow reads</th><td class="no">✗ No</td><td>Q reads P's new value, then updates one of its own keys. Digests track each owner separately, so R can receive Q's update before P's, and scuttle-depth might even send it first.</td></tr>
+        <tr><th scope="row">PRAM</th><td class="no">✗ No</td><td>Jepsen defines PRAM as read your writes + monotonic reads + monotonic writes, and monotonic writes fails (next row).</td></tr>
+        <tr><th scope="row">Monotonic writes</th><td class="no">✗ No</td><td>P writes <code>a</code>, then <code>b</code>, then <code>a</code> again (versions 1, 2, 3). A peer missing all of them, with an MTU of 1, receives only <code>b@2</code>, the lowest version it's missing, because <code>a@1</code> was already overwritten. The peer now sees P's second write but reads <code>a</code> as ⊥, as if the first write never happened. (See below for when this <em>does</em> hold.)</td></tr>
+        <tr><th scope="row">Monotonic reads</th><td class="yes">✓ If sticky</td><td>A participant only ever replaces a copy with a higher version, so a reader that stays with one participant never goes back in time. A reader that switches participants can.</td></tr>
+        <tr><th scope="row">Read your writes</th><td class="yes">✓ For the owner</td><td>Owners write and read their own keys locally. A client that writes through P but reads from another participant can miss its own write.</td></tr>
+        <tr><th scope="row">Convergence</th><td class="yes">✓ Yes</td><td>Jepsen's map doesn't list eventual consistency, but convergence is what Scuttlebutt is for. Once updates stop, gossip brings every copy to the owner's current state (with probability 1, per the paper), and participants holding the same versions hold the same values.</td></tr>
+      </tbody>
+    </table>
+
+    <h3>The MTU is what breaks per-owner ordering</h3>
+    <p>If every exchange carried <em>all</em> of an owner's missing deltas, a peer's copy of that owner's state would always be a state the owner actually had at some point, and it would only move forward. Each owner's writes would then be seen in order, and you'd get <strong>PRAM</strong>. Truncation breaks this, because a truncated message carries only the oldest of the owner's <em>current</em> entries, and intermediate versions that have been overwritten are never sent. I checked this with the simulation on this page. With unlimited messages, 0 of 432,000 sampled copies were states their owner never had. With an MTU of 2, 7,395 were.</p>
+
+    <h3>In practice</h3>
+    <ul class="rules">
+      <li><strong>Treat gossiped state as eventually consistent hints.</strong> That suits what Scuttlebutt is usually used for, like membership, health, load and configuration, where slightly stale is fine.</li>
+      <li><strong>Don't rely on two keys being in sync, even for one owner.</strong> A peer can see one key's update without the other's. If values must change together, put them in a single key, so they share one version.</li>
+      <li><strong>Need causal consistency?</strong> Attach dependencies to updates (for example, version vectors) and hold back an update until everything it depends on has arrived. That costs more metadata, and readers have to stick to one participant.</li>
+      <li><strong>Availability:</strong> reads never wait, and every participant can always update its own keys, even during a partition. But only P can update P's keys.</li>
+    </ul>
 
     <h2>Choosing what fits</h2>
     <p>When the deltas don't fit in one message, something has to pick which ones go first. Any ordering works as long as each participant's deltas stay in version order, but the choice matters a lot for performance. The paper compares four:</p>
