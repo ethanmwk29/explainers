@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Tarjan's SCC Algorithm</title>
   <meta name="description" content="An interactive, step-by-step explainer of Tarjan's strongly connected components algorithm.">
-  <link rel="stylesheet" href="../../style.css?v=3">
+  <link rel="stylesheet" href="../../style.css?v=4">
   <script src="../../theme.js"></script>
   <style>
     .playground {
@@ -329,6 +329,9 @@ func TarjanSCC(graph [][]int) [][]int {
       <li><strong>Two ways to update low.</strong> For an edge to a vertex on the stack, some versions use <code>low[w]</code> instead of <code>index[w]</code>. Both find the same components. <code>index[w]</code> matches Tarjan's original paper and makes <code>low</code> easier to reason about.</li>
       <li><strong>Use a set for the on-stack check.</strong> Scanning the stack for <code>w</code> would cost O(V) per edge. Keep a boolean slice (like <code>onStack</code> in the Go code above) so the check takes O(1).</li>
     </ul>
+
+    <h2>Next: which edges hold an SCC together?</h2>
+    <p>Tarjan's algorithm tells you which vertices belong together, but not which edges that depends on. Two graphs can have identical SCCs and different critical edges. <a href="../strong-bridges/">Strong bridges and dominators</a> picks up from here.</p>
 
     <footer>Part of <a href="../">Data Structures &amp; Algorithms</a> in <a href="../../">Explainers</a>.</footer>
   </main>

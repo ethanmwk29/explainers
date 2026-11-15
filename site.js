@@ -22,6 +22,18 @@ function el(tag, attrs = {}, ...kids) {
 
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
+// Split a section's explainers into consecutive runs by their optional
+// "group" field (e.g. "Graphs: directed"), keeping catalog order.
+function grouped(explainers) {
+  const runs = [];
+  for (const x of explainers) {
+    const g = x.group || null;
+    if (!runs.length || runs[runs.length - 1].group !== g) runs.push({ group: g, items: [] });
+    runs[runs.length - 1].items.push(x);
+  }
+  return runs;
+}
+
 async function loadCatalog(root) {
   const res = await fetch(`${root}catalog.json`, { cache: 'no-cache' });
   if (!res.ok) throw new Error(`catalog.json: HTTP ${res.status}`);
@@ -49,8 +61,10 @@ async function renderHome(container) {
           el('h2', {}, el('a', { href: `${section.id}/` }, section.title)),
           el('span', { class: 'count' }, plural(section.explainers.length, 'explainer'))),
         el('p', {}, section.blurb),
-        el('ul', { class: 'section-links' }, section.explainers.map(x =>
-          el('li', {}, el('a', { href: `${section.id}/${x.slug}/` }, x.title, ' →')))))));
+        el('ul', { class: 'section-links' }, grouped(section.explainers).map(run => [
+          run.group ? el('li', { class: 'group-label' }, run.group) : null,
+          run.items.map(x => el('li', {}, el('a', { href: `${section.id}/${x.slug}/` }, x.title, ' →'))),
+        ])))));
   } catch (err) { showError(container, err); }
 }
 
@@ -61,10 +75,13 @@ async function renderSection(sectionId, container) {
     const section = catalog.find(s => s.id === sectionId);
     document.getElementById('section-title').textContent = section.title;
     document.getElementById('section-blurb').textContent = section.blurb;
-    container.replaceChildren(...section.explainers.map(x =>
-      el('li', {},
-        el('a', { class: 'card', href: `${x.slug}/` },
-          el('h2', {}, x.title),
-          el('p', {}, x.blurb)))));
+    container.replaceChildren(...grouped(section.explainers).flatMap(run => [
+      run.group ? el('li', { class: 'group-heading' }, el('h2', {}, run.group)) : null,
+      ...run.items.map(x =>
+        el('li', {},
+          el('a', { class: 'card', href: `${x.slug}/` },
+            el('h3', {}, x.title),
+            el('p', {}, x.blurb)))),
+    ].filter(Boolean)));
   } catch (err) { showError(container, err); }
 }

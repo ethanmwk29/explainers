@@ -24,22 +24,32 @@
       {
         "slug": "union-find",
         "title": "Union Find",
-        "blurb": "Track which things are connected using a forest of parent pointers, two small tricks, and nearly constant time."
-      },
-      {
-        "slug": "tarjan-scc",
-        "title": "Tarjan's SCC algorithm",
-        "blurb": "Split a directed graph into strongly connected components with a single depth-first search, step by step."
+        "blurb": "Track which things are connected using a forest of parent pointers, two small tricks, and nearly constant time.",
+        "group": "Data structures"
       },
       {
         "slug": "bridges",
         "title": "Which edges can you remove?",
-        "blurb": "Bridges, spanning trees, and the difference between removing edges one at a time and all at once."
+        "blurb": "Bridges, spanning trees, and the difference between removing edges one at a time and all at once.",
+        "group": "Graphs: undirected"
       },
       {
         "slug": "mst",
         "title": "Minimum spanning trees",
-        "blurb": "The cheapest way to keep a graph connected: the cut property, Kruskal's algorithm and Prim's algorithm, side by side."
+        "blurb": "The cheapest way to keep a graph connected: the cut property, Kruskal's algorithm and Prim's algorithm, side by side.",
+        "group": "Graphs: undirected"
+      },
+      {
+        "slug": "tarjan-scc",
+        "title": "Tarjan's SCC algorithm",
+        "blurb": "Split a directed graph into strongly connected components with a single depth-first search, step by step.",
+        "group": "Graphs: directed"
+      },
+      {
+        "slug": "strong-bridges",
+        "title": "Strong bridges and dominators",
+        "blurb": "Which edges hold a strongly connected graph together, why Tarjan's algorithm can't tell you, and how dominators can.",
+        "group": "Graphs: directed"
       }
     ]
   },

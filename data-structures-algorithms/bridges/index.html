@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Removable Edges</title>
   <meta name="description" content="Which edges can you remove from an undirected graph and keep it connected? Bridges, spanning trees, and the difference between one at a time and all at once.">
-  <link rel="stylesheet" href="../../style.css?v=3">
+  <link rel="stylesheet" href="../../style.css?v=4">
   <script src="../../theme.js"></script>
   <style>
     :root { --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; }
@@ -232,19 +232,16 @@
     </ul>
     <p>When edges have weights and you want the cheapest set to keep, you need a <strong>minimum spanning tree</strong>, which is the next explainer: <a href="../mst/">Minimum spanning trees</a>.</p>
 
-    <h2>The vertex version: articulation points</h2>
-    <p>The same DFS also finds <strong>articulation points</strong> (cut vertices): vertices whose removal disconnects the graph. When the search returns from child <code>v</code> to <code>u</code>, check <code>low[v] ≥ index[u]</code> instead of <code>&gt;</code>. If nothing under <code>v</code> reaches <em>above</em> <code>u</code>, then <code>u</code> is the only link to <code>v</code>'s subtree. The root of the DFS is a special case: it's an articulation point exactly when it has two or more tree children.</p>
-
     <h2>What changes for directed graphs</h2>
-    <p>For directed graphs the natural goal is to keep the graph <strong>strongly connected</strong> (or keep its <a href="../tarjan-scc/">SCCs</a> intact). The one-at-a-time question stays easy, but the all-at-once question becomes very hard:</p>
+    <p>For directed graphs, the natural goal is to keep the graph <strong>strongly connected</strong>. The one-at-a-time question stays easy, but the all-at-once question becomes very hard:</p>
     <table class="cmp">
       <thead><tr><th scope="col"></th><th scope="col">One at a time</th><th scope="col">All at once</th></tr></thead>
       <tbody>
         <tr><th scope="row">Undirected (or weakly connected)</th><td>Bridges: one DFS, O(V + E)</td><td>Remove everything outside a spanning tree, O(V + E)</td></tr>
-        <tr><th scope="row">Strongly connected</th><td><em>Strong bridges</em>: O(V + E) using dominator trees of the graph and its reverse (Italiano, Laura &amp; Santaroni, 2012)</td><td><strong>NP-hard</strong>: keeping just <code>V</code> edges is possible only if the graph has a Hamiltonian cycle</td></tr>
+        <tr><th scope="row">Strongly connected</th><td>Strong bridges: O(V + E), using dominators</td><td><strong>NP-hard</strong></td></tr>
       </tbody>
     </table>
-    <p>The DFS shortcut also mostly disappears. In an undirected DFS, every non-tree edge is safe on sight because the tree path works in both directions. In a directed DFS, the tree path only goes one way, so only <em>forward</em> edges (to an already-finished descendant) are safe on sight. Back edges and cross edges might be the only way back. In the cycle <code>A → B → C → A</code>, the back edge <code>C → A</code> is essential. To keep SCCs intact you first need the SCCs themselves (from Tarjan or Kosaraju). After that, edges <em>between</em> SCCs can always go, and edges inside each SCC are checked for strong bridges.</p>
+    <p>The directed side has its own explainers: <a href="../tarjan-scc/">Tarjan's SCC algorithm</a> finds the strongly connected components, and <a href="../strong-bridges/">Strong bridges and dominators</a> finds the edges that hold them together.</p>
 
     <h2>The code</h2>
     <p>Bridge finding in Go. Edges carry IDs, so the "skip the edge we came in on" rule stays correct even with duplicate edges between the same two vertices.</p>

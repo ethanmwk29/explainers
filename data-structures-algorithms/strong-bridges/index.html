@@ -1,0 +1,498 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Strong Bridges</title>
+  <meta name="description" content="Which edges hold a strongly connected directed graph together? Strong bridges, dominators, and why Tarjan's SCC algorithm alone can't tell you.">
+  <link rel="stylesheet" href="../../style.css?v=4">
+  <script src="../../theme.js"></script>
+  <style>
+    :root { --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) { --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; }
+    }
+    :root[data-theme="dark"] { --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; }
+
+    .wide { width: min(1100px, calc(100vw - 32px)); margin: 1.6em 0 2.2em; position: relative; left: 50%; transform: translateX(-50%); }
+    .panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; min-width: 0; }
+    .panel h3 { font-size: 0.75rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 10px; font-weight: 600; }
+    .toolbar { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+    .toolbar select { font: inherit; font-size: 0.92rem; padding: 0.3em 0.45em; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); }
+    .toolbar label { font-size: 0.9rem; color: var(--muted); display: inline-flex; gap: 6px; align-items: center; }
+    .toolbar .spacer { flex: 1; }
+    .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+    .seg button { border: none; border-radius: 0; background: var(--surface); }
+    .seg button + button { border-left: 1px solid var(--border); }
+    .seg button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
+    .two { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(260px, 1fr); gap: 14px; margin-top: 12px; align-items: start; }
+    .two > * { min-width: 0; }
+    @media (max-width: 860px) { .two { grid-template-columns: minmax(0, 1fr); } }
+
+    /* ---------- Graph ---------- */
+    .graph-wrap { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; overflow-x: auto; }
+    svg.graph { display: block; width: 100%; height: auto; }
+    @media (max-width: 560px) { svg.graph.big { min-width: 520px; } }
+    .graph text { font-family: var(--sans); pointer-events: none; }
+    .graph .label { font-size: 17px; font-weight: 700; text-anchor: middle; dominant-baseline: central; fill: var(--text); }
+    .graph .node circle { fill: var(--surface); stroke: var(--text); stroke-width: 2; }
+    .graph .node.clickable { cursor: pointer; }
+    .graph .node.clickable * { pointer-events: auto; }
+    .graph .ring { fill: none !important; stroke: var(--accent) !important; stroke-width: 2.5 !important; }
+    .graph .edge { stroke: var(--muted); stroke-width: 2; fill: none; }
+    .graph .edge.must { stroke: var(--warn); stroke-width: 3.5; }
+    .graph .edge.path { stroke: var(--accent); stroke-width: 4.5; }
+    .graph .edge.removed { stroke-dasharray: 2 6; opacity: 0.45; }
+    .graph .hit { stroke: transparent; stroke-width: 18; fill: none; cursor: pointer; pointer-events: stroke; }
+    .graph .hit:hover { stroke: color-mix(in srgb, var(--accent) 18%, transparent); }
+
+    .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 10px; font-size: 0.82rem; color: var(--muted); align-items: center; }
+    .legend span { display: inline-flex; align-items: center; gap: 6px; }
+    .note { font-size: 0.88rem; color: var(--muted); margin: 8px 0 0; }
+    .side p { margin: 0 0 8px; }
+    .side code { white-space: nowrap; }
+    .ok-text { color: var(--ok); font-weight: 600; }
+    .bad-text { color: var(--warn); font-weight: 600; }
+    .domtree { list-style: none; margin: 4px 0 12px; padding: 0; font-family: var(--mono); font-size: 0.9rem; }
+    .domtree li { padding: 1px 0; }
+    .domtree li.sel { color: var(--accent); font-weight: 700; }
+    .domtree .muted { color: var(--muted); }
+
+    /* Opening comparison */
+    .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 1.2em 0; }
+    @media (max-width: 600px) { .pair { grid-template-columns: 1fr; } }
+    .pair figure { margin: 0; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; }
+    .pair figcaption { font-size: 0.9rem; margin-top: 6px; }
+    .pair figcaption b { font-family: var(--mono); font-size: 0.85rem; }
+
+    /* Prose */
+    .rules { padding-left: 1.2em; }
+    .rules li { margin-bottom: 0.5em; }
+    main h3 { margin: 1.8em 0 0.4em; font-size: 1.15rem; }
+    pre.snippet { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.5; }
+    pre.snippet code { background: none; padding: 0; }
+  </style>
+</head>
+<body>
+  <main>
+    <nav class="crumbs"><a href="../../">Explainers</a><span>/</span><a href="../">Data Structures &amp; Algorithms</a></nav>
+    <h1>Strong bridges and dominators</h1>
+    <p class="lede">Tarjan's algorithm tells you which vertices of a directed graph can all reach each other. It can't tell you which edges are holding that together. For that you need a different idea: dominators.</p>
+
+    <h2>What Tarjan can't see</h2>
+    <p>A <strong>strong bridge</strong> is an edge whose removal breaks strong connectivity: afterwards, some vertex can no longer reach some other vertex. It's the directed version of a <a href="../bridges/">bridge</a>.</p>
+    <p>Compare these two graphs. <a href="../tarjan-scc/">Tarjan's SCC algorithm</a> gives exactly the same answer for both: one component, {A, B, C}. But their strong bridges are different, so the SCCs alone can't tell you which edges matter.</p>
+    <div class="pair">
+      <figure><svg class="graph" id="fig-1" role="img" aria-label="Cycle A to B to C to A. All three edges are strong bridges."></svg>
+        <figcaption>Tarjan: one SCC. <b>Strong bridges:</b> all three edges.</figcaption></figure>
+      <figure><svg class="graph" id="fig-2" role="img" aria-label="The same cycle plus a shortcut A to C. The shortcut is not a strong bridge; the other three edges are."></svg>
+        <figcaption>Tarjan: one SCC. <b>Strong bridges:</b> still <code>A → B</code>, <code>B → C</code> and <code>C → A</code>, but not the shortcut <code>A → C</code>.</figcaption></figure>
+    </div>
+    <p>Even with the shortcut, <code>A → B</code> is still B's only way in, <code>B → C</code> is B's only way out, and <code>C → A</code> is A's only way in. The shortcut itself can go, because the cycle still connects everything.</p>
+
+    <h2>Split it into two questions</h2>
+    <p>Pick any vertex <code>r</code> as a <strong>root</strong>. A graph is strongly connected exactly when two things are true:</p>
+    <ol class="rules">
+      <li><strong>The root can reach every vertex</strong>, and</li>
+      <li><strong>every vertex can reach the root.</strong> (Then any <code>x</code> can get to any <code>y</code> by going through <code>r</code>.)</li>
+    </ol>
+    <p>So an edge is a strong bridge exactly when removing it breaks one of the two. In other words, the edge is <strong>unavoidable</strong>: either every path from the root to some vertex must use it, or every path from some vertex back to the root must use it. That's the key result behind the fast algorithm (Italiano, Laura &amp; Santaroni, 2012), and it works whichever root you pick.</p>
+
+    <h2>Dominators</h2>
+    <p>Questions about "every path from the root" are what <strong>dominators</strong> answer:</p>
+    <ul class="rules">
+      <li>A vertex <code>d</code> <strong>dominates</strong> <code>w</code> if every path from the root to <code>w</code> goes through <code>d</code>. The root dominates everything, and every vertex dominates itself.</li>
+      <li>The closest one, the last unavoidable stop before <code>w</code>, is its <strong>immediate dominator</strong>. Linking each vertex to its immediate dominator gives a tree rooted at the root: the <strong>dominator tree</strong>.</li>
+      <li>The edge version: an edge <code>u → v</code> is unavoidable for reaching <code>v</code> exactly when <code>u</code> is <code>v</code>'s immediate dominator and every other edge into <code>v</code> comes from somewhere you can only reach by passing through <code>v</code> first. Then the first time any path arrives at <code>v</code>, it has to come along <code>u → v</code>.</li>
+    </ul>
+    <p>"Every vertex can reach the root" is the same question on the <strong>reversed</strong> graph, so you compute dominators twice: once forward and once backward.</p>
+
+    <h2>Try it</h2>
+    <p>Pick a root and a direction. In <strong>From the root</strong> and <strong>To the root</strong>, red edges are unavoidable in that direction. Click a vertex to see what every path between it and the root has to go through. In <strong>Strong bridges</strong>, the two red sets are combined. Change the root and each half changes, but the combined set never does. Click an edge there to remove it and see the components that result.</p>
+  </main>
+
+  <section class="wide" aria-label="Dominators and strong bridges explorer">
+    <div class="panel">
+      <div class="toolbar">
+        <div class="seg" role="group" aria-label="View">
+          <button data-view="from" aria-pressed="true">From the root</button>
+          <button data-view="to" aria-pressed="false">To the root</button>
+          <button data-view="strong" aria-pressed="false">Strong bridges</button>
+        </div>
+        <label>Root <select id="root" aria-label="Root vertex"></select></label>
+        <span class="spacer"></span>
+        <button id="clear">Clear selection</button>
+      </div>
+      <div class="two">
+        <div>
+          <div class="graph-wrap"><svg class="graph big" id="graph" role="img" aria-label="The directed graph"></svg></div>
+          <div class="legend" aria-hidden="true" id="legend"></div>
+        </div>
+        <div class="panel side" id="side" aria-live="polite"></div>
+      </div>
+    </div>
+  </section>
+
+  <main style="padding-top: 0">
+    <h2>Finding them fast</h2>
+    <p>The explorer above uses brute force, which is fine for 8 vertices. The fast version has three steps:</p>
+    <ol class="rules">
+      <li><strong>Compute dominators</strong> from the root, in the graph and in its reverse. The classic algorithm is <strong>Lengauer–Tarjan</strong> (1979), by the same Tarjan, and built from similar ingredients: DFS numbering and a <code>low</code>-like "semi-dominator" value. It runs in near-linear time, O(E · α(E, V)). Truly linear-time dominator algorithms came later (Alstrup, Harel, Lauridsen &amp; Thorup, 1999; Buchsbaum et al., 2008). A simpler iterative algorithm by <strong>Cooper, Harvey &amp; Kennedy</strong> is popular in compilers and is fast in practice.</li>
+      <li><strong>Test each edge</strong> <code>u → v</code> with the rule from the Dominators section: <code>u</code> is <code>v</code>'s immediate dominator, and <code>v</code> dominates every other predecessor of <code>v</code>.</li>
+      <li><strong>Combine the two directions.</strong> With linear-time dominators, the whole thing is <strong>O(V + E)</strong>.</li>
+    </ol>
+    <p>Without dominators, you can test each edge by removing it and checking reachability (or rerunning Tarjan). That's O(E · (V + E)) in total.</p>
+
+    <h3>Graphs that aren't strongly connected</h3>
+    <p>To find the edges that keep every SCC intact, run <a href="../tarjan-scc/">Tarjan</a> first. Edges <em>between</em> two different SCCs can always be removed: a path between two vertices of the same SCC never leaves it, because any vertex it passed through would be part of that SCC too. Then look for strong bridges inside each SCC separately. Tarjan's algorithm is a preprocessing step here, not the method itself.</p>
+
+    <h3>All at once is a different story</h3>
+    <p>As with <a href="../bridges/">undirected bridges</a>, "which single edges can I remove?" is not "how many can I remove together?" For directed graphs, the all-at-once question (the fewest edges that keep a graph strongly connected) is <strong>NP-hard</strong>. Keeping just <code>V</code> edges is possible only if the graph has a Hamiltonian cycle. A simple 2-approximation uses the same root idea: keep a tree of paths <em>from</em> the root plus a tree of paths <em>to</em> the root, at most 2(V − 1) edges.</p>
+
+    <h3>Dominators elsewhere</h3>
+    <ul class="rules">
+      <li><strong>Compilers</strong> use dominator trees to find loops and to build SSA form, the representation most optimizers work on.</li>
+      <li><strong>Memory profilers</strong> use them too. In a heap snapshot, an object's <em>retained size</em> (how much memory would be freed if it disappeared) is the total size of everything it dominates in the graph of references from the roots.</li>
+    </ul>
+
+    <h2>The code</h2>
+    <p>Strong bridges in Go, using the Cooper–Harvey–Kennedy algorithm for dominators and the edge test above. It's checked against brute force on thousands of random graphs, including graphs with duplicate edges (a doubled edge is never a strong bridge).</p>
+<pre class="snippet"><code>// StrongBridges returns the positions (in edges) of every strong bridge of a
+// strongly connected directed graph with vertices 0..n-1: the edges whose
+// removal would break strong connectivity. edges[i] = [2]int{from, to}.
+func StrongBridges(n int, edges [][2]int) []int {
+	fwd := unavoidable(n, edges, false) // needed on some path from vertex 0
+	rev := unavoidable(n, edges, true)  // needed on some path to vertex 0
+	var out []int
+	for i := range edges {
+		if fwd[i] || rev[i] {
+			out = append(out, i)
+		}
+	}
+	return out
+}
+
+// unavoidable marks each edge u→v that every path from vertex 0 to v must use
+// (in the reversed graph when reverse is true). The test: u is v's immediate
+// dominator, there's only one u→v edge, and v dominates its other predecessors,
+// so any other way into v has to pass through v first.
+func unavoidable(n int, edges [][2]int, reverse bool) []bool {
+	adj := make([][]int, n)
+	preds := make([][]int, n)
+	for _, e := range edges {
+		u, v := e[0], e[1]
+		if reverse {
+			u, v = v, u
+		}
+		adj[u] = append(adj[u], v)
+		preds[v] = append(preds[v], u)
+	}
+	idom := dominators(adj, preds, 0)
+	dominates := func(a, b int) bool { // does a dominate b?
+		for b != a &amp;&amp; idom[b] != b {
+			b = idom[b]
+		}
+		return b == a
+	}
+
+	out := make([]bool, len(edges))
+	for i, e := range edges {
+		u, v := e[0], e[1]
+		if reverse {
+			u, v = v, u
+		}
+		if v == 0 || idom[v] != u {
+			continue
+		}
+		ok, copies := true, 0
+		for _, w := range preds[v] {
+			if w == u {
+				copies++
+			} else if !dominates(v, w) {
+				ok = false
+			}
+		}
+		out[i] = ok &amp;&amp; copies == 1
+	}
+	return out
+}
+
+// dominators computes immediate dominators from root with the iterative
+// Cooper–Harvey–Kennedy algorithm. idom[root] == root.
+func dominators(adj, preds [][]int, root int) []int {
+	n := len(adj)
+	var post []int // vertices in DFS postorder
+	seen := make([]bool, n)
+	var dfs func(int)
+	dfs = func(v int) {
+		seen[v] = true
+		for _, w := range adj[v] {
+			if !seen[w] {
+				dfs(w)
+			}
+		}
+		post = append(post, v)
+	}
+	dfs(root)
+	num := make([]int, n) // postorder number: higher means earlier in the DFS
+	for i, v := range post {
+		num[v] = i
+	}
+
+	idom := make([]int, n)
+	for i := range idom {
+		idom[i] = -1
+	}
+	idom[root] = root
+	intersect := func(a, b int) int { // closest common dominator
+		for a != b {
+			for num[a] &lt; num[b] {
+				a = idom[a]
+			}
+			for num[b] &lt; num[a] {
+				b = idom[b]
+			}
+		}
+		return a
+	}
+	for changed := true; changed; {
+		changed = false
+		for i := len(post) - 2; i &gt;= 0; i-- { // reverse postorder, skipping the root
+			v, best := post[i], -1
+			for _, p := range preds[v] {
+				if idom[p] == -1 {
+					continue // not processed yet
+				}
+				if best == -1 {
+					best = p
+				} else {
+					best = intersect(p, best)
+				}
+			}
+			if idom[v] != best {
+				idom[v], changed = best, true
+			}
+		}
+	}
+	return idom
+}</code></pre>
+
+    <footer>Part of <a href="../">Data Structures &amp; Algorithms</a> in <a href="../../">Explainers</a>.</footer>
+  </main>
+
+  <script>
+  const $ = id => document.getElementById(id);
+
+  // =====================================================================
+  // Graph helpers (brute force: clear, and fast enough at this size)
+  // =====================================================================
+  function makeGraph(spec, nodes, h) {
+    const edges = spec.split(' ').map((s, id) => { const [a, b] = s.split('>'); return { id, a, b, name: `${a} → ${b}` }; });
+    return { ids: Object.keys(nodes).sort(), edges, nodes, h };
+  }
+
+  // Vertices reachable from `from` (or that can reach it, when reverse), optionally skipping an edge or vertex.
+  function reach(g, from, { reverse = false, noEdge = -1, noVertex = null, removed = null } = {}) {
+    const seen = new Set([from]), stack = [from];
+    while (stack.length) {
+      const v = stack.pop();
+      for (const e of g.edges) {
+        if (e.id === noEdge || (removed && removed.has(e.id))) continue;
+        const [x, y] = reverse ? [e.b, e.a] : [e.a, e.b];
+        if (x === v && y !== noVertex && !seen.has(y)) { seen.add(y); stack.push(y); }
+      }
+    }
+    return seen;
+  }
+
+  // Dominators, immediate dominators, and unavoidable edges, from (or to) the root.
+  function analyze(g, root, reverse) {
+    const all = reach(g, root, { reverse });
+    const dom = Object.fromEntries(g.ids.map(v => [v, new Set([root, v])]));
+    for (const d of g.ids) {
+      if (d === root) continue;
+      const r = reach(g, root, { reverse, noVertex: d });
+      for (const w of g.ids) if (w !== d && all.has(w) && !r.has(w)) dom[w].add(d);
+    }
+    const idom = {};
+    for (const w of g.ids) {
+      if (w === root) continue;
+      for (const d of dom[w]) if (d !== w && dom[d].size === dom[w].size - 1) idom[w] = d;
+    }
+    const need = Object.fromEntries(g.ids.map(v => [v, new Set()]));
+    for (const e of g.edges) {
+      const r = reach(g, root, { reverse, noEdge: e.id });
+      for (const w of g.ids) if (all.has(w) && !r.has(w)) need[w].add(e.id);
+    }
+    const unavoidable = new Set(Object.values(need).flatMap(s => [...s]));
+    return { dom, idom, need, unavoidable };
+  }
+
+  // Strongly connected components (Tarjan), ignoring removed edges.
+  function sccs(g, removed) {
+    const index = {}, low = {}, stack = [], on = new Set(), comp = {};
+    let counter = 0, count = 0;
+    function visit(v) {
+      index[v] = low[v] = counter++; stack.push(v); on.add(v);
+      for (const e of g.edges) {
+        if (e.a !== v || removed.has(e.id)) continue;
+        const w = e.b;
+        if (index[w] === undefined) { visit(w); low[v] = Math.min(low[v], low[w]); }
+        else if (on.has(w)) low[v] = Math.min(low[v], index[w]);
+      }
+      if (low[v] === index[v]) { let w; do { w = stack.pop(); on.delete(w); comp[w] = count; } while (w !== v); count++; }
+    }
+    for (const v of g.ids) if (index[v] === undefined) visit(v);
+    return { comp, count };
+  }
+
+  // =====================================================================
+  // Drawing
+  // =====================================================================
+  const R = 20, W = 780;
+  const MARKERS = { def: 'var(--muted)', must: 'var(--warn)', path: 'var(--accent)' };
+
+  function edgeGeom(g, e) {
+    const [x1, y1] = g.nodes[e.a], [x2, y2] = g.nodes[e.b];
+    const curved = g.edges.some(f => f.a === e.b && f.b === e.a);
+    const mx = (x1 + x2) / 2, my = (y1 + y2) / 2, dx = x2 - x1, dy = y2 - y1, len = Math.hypot(dx, dy);
+    const off = curved ? 24 : 0;
+    const cx = mx - dy / len * off, cy = my + dx / len * off;
+    const u1 = Math.hypot(cx - x1, cy - y1) || 1, u2 = Math.hypot(cx - x2, cy - y2) || 1;
+    const sx = x1 + (cx - x1) / u1 * R, sy = y1 + (cy - y1) / u1 * R;
+    const ex = x2 + (cx - x2) / u2 * (R + 3), ey = y2 + (cy - y2) / u2 * (R + 3);
+    return `M${sx.toFixed(1)} ${sy.toFixed(1)} Q${cx.toFixed(1)} ${cy.toFixed(1)} ${ex.toFixed(1)} ${ey.toFixed(1)}`;
+  }
+
+  function draw(svg, g, o = {}) {
+    const uid = svg.id;
+    svg.setAttribute('viewBox', `0 0 ${o.w || W} ${g.h}`);
+    let s = '<defs>' + Object.entries(MARKERS).map(([k, c]) =>
+      `<marker id="${uid}-${k}" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" style="fill:${c}"/></marker>`).join('') + '</defs>';
+    for (const e of g.edges) {
+      const cls = o.edgeClass ? o.edgeClass(e) : '';
+      const m = cls.includes('path') ? 'path' : cls.includes('must') ? 'must' : 'def';
+      s += `<path class="edge ${cls}" d="${edgeGeom(g, e)}" marker-end="url(#${uid}-${m})"/>`;
+    }
+    if (o.clickEdges) for (const e of g.edges) s += `<path class="hit" data-edge="${e.id}" d="${edgeGeom(g, e)}"><title>${o.edgeTitle(e)}</title></path>`;
+    for (const v of g.ids) {
+      const [x, y] = g.nodes[v];
+      const st = o.nodeStyle ? o.nodeStyle(v) : {};
+      s += `<g class="node${o.clickNodes ? ' clickable' : ''}" data-node="${v}">`;
+      if (st.ring) s += `<circle class="ring" cx="${x}" cy="${y}" r="${R + 6}"/>`;
+      s += `<circle cx="${x}" cy="${y}" r="${R}" style="${st.style || ''}"/><text class="label" x="${x}" y="${y}">${v}</text>`;
+      if (o.clickNodes) s += `<title>Show what every path between ${v} and the root goes through</title>`;
+      s += '</g>';
+    }
+    svg.innerHTML = s;
+  }
+  const tint = c => `fill:color-mix(in srgb, var(${c}) 25%, var(--surface));stroke:var(${c});stroke-width:3`;
+  const names = (g, ids) => [...ids].sort((a, b) => a - b).map(id => `<code>${g.edges[id].name}</code>`).join(', ');
+
+  // =====================================================================
+  // Opening figures
+  // =====================================================================
+  const TRI = { A: [90, 60], B: [300, 60], C: [195, 205] };
+  const fig1 = makeGraph('A>B B>C C>A', TRI, 250);
+  const fig2 = makeGraph('A>B B>C C>A A>C', TRI, 250);
+  for (const [svg, g] of [[$('fig-1'), fig1], [$('fig-2'), fig2]]) {
+    const truth = new Set(g.edges.filter(e => {
+      const rm = new Set([e.id]);
+      return reach(g, 'A', { removed: rm }).size < 3 || reach(g, 'A', { reverse: true, removed: rm }).size < 3;
+    }).map(e => e.id));
+    draw(svg, g, { w: 390, edgeClass: e => (truth.has(e.id) ? 'must' : '') });
+  }
+
+  // =====================================================================
+  // Explorer
+  // =====================================================================
+  const G = makeGraph('A>B B>C C>A A>D C>D D>E E>F F>D E>G G>H H>E H>C B>F', {
+    A: [90, 110], B: [250, 60], C: [200, 255], D: [400, 170], E: [560, 105], F: [430, 345], G: [705, 205], H: [600, 335],
+  }, 410);
+  const STRONG = new Set(G.edges.filter(e => {
+    const rm = new Set([e.id]);
+    return reach(G, 'A', { removed: rm }).size < G.ids.length || reach(G, 'A', { reverse: true, removed: rm }).size < G.ids.length;
+  }).map(e => e.id));
+  const ex = { view: 'from', root: 'A', sel: null, removed: null };
+  $('root').innerHTML = G.ids.map(v => `<option>${v}</option>`).join('');
+
+  function domTreeHTML(an, root, selected) {
+    const kids = {};
+    for (const [w, d] of Object.entries(an.idom)) (kids[d] ||= []).push(w);
+    const lines = [];
+    const walk = (v, depth) => {
+      lines.push(`<li class="${v === selected ? 'sel' : ''}">${'<span class="muted">· </span>'.repeat(depth)}${v}</li>`);
+      for (const k of (kids[v] || []).sort()) walk(k, depth + 1);
+    };
+    walk(root, 0);
+    return `<ul class="domtree" aria-label="Dominator tree">${lines.join('')}</ul>`;
+  }
+
+  function render() {
+    const { view, root, sel } = ex;
+    document.querySelectorAll('[data-view]').forEach(b => b.setAttribute('aria-pressed', b.dataset.view === view));
+    const side = $('side');
+    if (view === 'strong') {
+      const fwd = analyze(G, root, false), rev = analyze(G, root, true);
+      const removed = ex.removed != null ? new Set([ex.removed]) : new Set();
+      const { comp, count } = sccs(G, removed);
+      const colors = ['--s1', '--s2', '--s3', '--s4'];
+      draw($('graph'), G, {
+        clickEdges: true,
+        edgeTitle: e => (ex.removed === e.id ? `Put ${e.name} back` : `Remove ${e.name}`),
+        edgeClass: e => (removed.has(e.id) ? 'removed' : STRONG.has(e.id) ? 'must' : ''),
+        nodeStyle: v => ({ ring: v === root, style: count > 1 ? tint(colors[comp[v] % colors.length]) : '' }),
+      });
+      $('legend').innerHTML = `<span><svg width="26" height="10"><line x1="1" y1="5" x2="25" y2="5" style="stroke:var(--warn);stroke-width:3.5"/></svg>strong bridge</span>
+        <span><svg width="18" height="18"><circle cx="9" cy="9" r="7" style="fill:none;stroke:var(--accent);stroke-width:2.5"/></svg>root</span>
+        <span>vertex colors: SCCs after the removal</span>`;
+      let msg = `<p><b>${STRONG.size} of ${G.edges.length}</b> edges are strong bridges: ${names(G, STRONG)}.</p>
+        <p>From root ${root}: ${fwd.unavoidable.size} unavoidable going out, ${rev.unavoidable.size} coming back, ${new Set([...fwd.unavoidable, ...rev.unavoidable]).size} combined. Pick a different root: the two halves change, but the combined set is always the same.</p>`;
+      if (ex.removed != null) {
+        const e = G.edges[ex.removed];
+        msg += count === 1
+          ? `<p class="ok-text">Still strongly connected.</p><p><code>${e.name}</code> isn't a strong bridge: every vertex can still reach every other one.</p>`
+          : `<p class="bad-text">Broken into ${count} SCCs.</p><p><code>${e.name}</code> is a strong bridge. The colors show the components Tarjan's algorithm finds without it.</p>`;
+      } else msg += `<p class="note">Click any edge to remove it and see what happens.</p>`;
+      side.innerHTML = msg;
+      return;
+    }
+
+    const reverse = view === 'to';
+    const an = analyze(G, root, reverse);
+    const selDoms = sel ? an.dom[sel] : null;
+    const selNeed = sel ? an.need[sel] : null;
+    draw($('graph'), G, {
+      clickNodes: true,
+      edgeClass: e => (selNeed && selNeed.has(e.id) ? 'path' : an.unavoidable.has(e.id) ? 'must' : ''),
+      nodeStyle: v => ({ ring: v === root, style: selDoms && selDoms.has(v) ? tint('--s1') : '' }),
+    });
+    $('legend').innerHTML = `<span><svg width="26" height="10"><line x1="1" y1="5" x2="25" y2="5" style="stroke:var(--warn);stroke-width:3.5"/></svg>unavoidable ${reverse ? 'on the way back to' : 'on the way out from'} the root</span>
+      <span><svg width="26" height="10"><line x1="1" y1="5" x2="25" y2="5" style="stroke:var(--accent);stroke-width:4.5"/></svg>needed for the selected vertex</span>
+      <span><svg width="18" height="18"><circle cx="9" cy="9" r="7" style="${tint('--s1')}"/></svg>${reverse ? 'on every path to the root' : 'dominators of the selected vertex'}</span>
+      <span><svg width="18" height="18"><circle cx="9" cy="9" r="7" style="fill:none;stroke:var(--accent);stroke-width:2.5"/></svg>root</span>`;
+    const dir = reverse ? `every path from <b>${sel}</b> back to <b>${root}</b>` : `every path from <b>${root}</b> to <b>${sel}</b>`;
+    let html = `<h3>Dominator tree ${reverse ? '(reversed graph)' : ''}</h3>${domTreeHTML(an, root, sel)}
+      <p class="note" style="margin-top:-6px">Each vertex sits under its immediate dominator${reverse ? ' in the reversed graph' : ''}: the last vertex that ${reverse ? `every path from it to ${root}` : `every path from ${root} to it`} must pass through.</p>`;
+    if (sel && sel !== root) {
+      const doms = [...selDoms].filter(v => v !== sel && v !== root).sort();
+      html += `<p>${dir[0].toUpperCase() + dir.slice(1)} passes through ${doms.length ? `<b>${doms.join(', ')}</b>` : 'no other vertex'}${selNeed.size ? ` and must use ${names(G, selNeed)}` : ' and needs no particular edge'}.</p>`;
+    } else {
+      html += `<p class="note">Click a vertex to see what ${reverse ? 'its paths back to the root' : 'paths from the root to it'} must go through.</p>`;
+    }
+    html += `<p><b>${an.unavoidable.size}</b> edge${an.unavoidable.size === 1 ? ' is' : 's are'} unavoidable ${reverse ? 'on the way back to' : 'on the way out from'} ${root}: ${names(G, an.unavoidable)}.</p>`;
+    side.innerHTML = html;
+  }
+
+  document.querySelectorAll('[data-view]').forEach(b => b.addEventListener('click', () => { ex.view = b.dataset.view; ex.removed = null; render(); }));
+  $('root').addEventListener('change', e => { ex.root = e.target.value; ex.sel = null; render(); });
+  $('clear').addEventListener('click', () => { ex.sel = null; ex.removed = null; render(); });
+  $('graph').addEventListener('click', e => {
+    const n = e.target.closest('[data-node]'), h = e.target.closest('[data-edge]');
+    if (ex.view === 'strong' && h) { const id = Number(h.dataset.edge); ex.removed = ex.removed === id ? null : id; render(); }
+    else if (ex.view !== 'strong' && n) { const v = n.dataset.node; ex.sel = ex.sel === v ? null : v; render(); }
+  });
+  render();
+  </script>
+</body>
+</html>
