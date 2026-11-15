@@ -9,6 +9,7 @@ Small, interactive explainers, served with GitHub Pages at https://ethanmwk29.gi
 **Data Structures & Algorithms**
 - [Union Find](https://ethanmwk29.github.io/explainers/data-structures-algorithms/union-find/): parent pointers, union by size, and path compression.
 - [Tarjan's SCC algorithm](https://ethanmwk29.github.io/explainers/data-structures-algorithms/tarjan-scc/): a step-by-step visualizer for finding strongly connected components.
+- [Which edges can you remove?](https://ethanmwk29.github.io/explainers/data-structures-algorithms/bridges/): bridges, spanning trees, and one-at-a-time vs. all-at-once removal.
 
 Code examples on the explainer pages are written in Go.
 

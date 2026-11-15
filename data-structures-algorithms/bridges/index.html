@@ -1,0 +1,700 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Removable Edges</title>
+  <meta name="description" content="Which edges can you remove from an undirected graph and keep it connected? Bridges, spanning trees, and the difference between one at a time and all at once.">
+  <link rel="stylesheet" href="../../style.css?v=3">
+  <script src="../../theme.js"></script>
+  <style>
+    :root { --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) { --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; }
+    }
+    :root[data-theme="dark"] { --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; }
+
+    .wide {
+      width: min(1100px, calc(100vw - 32px));
+      margin: 1.6em 0 2.2em;
+      position: relative; left: 50%; transform: translateX(-50%);
+    }
+    .panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; min-width: 0; }
+    .panel h3 { font-size: 0.75rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 10px; font-weight: 600; }
+    .toolbar { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+    .toolbar select {
+      font: inherit; font-size: 0.92rem; padding: 0.3em 0.45em; border-radius: 8px;
+      border: 1px solid var(--border); background: var(--bg); color: var(--text);
+    }
+    .toolbar label { font-size: 0.9rem; color: var(--muted); display: inline-flex; gap: 6px; align-items: center; }
+    .toolbar .spacer { flex: 1; }
+    .toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 0.92rem; color: var(--text); cursor: pointer; }
+    .toggle input { accent-color: var(--accent); width: 16px; height: 16px; }
+    .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+    .seg button { border: none; border-radius: 0; background: var(--surface); }
+    .seg button + button { border-left: 1px solid var(--border); }
+    .seg button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
+
+    .two { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(260px, 1fr); gap: 14px; margin-top: 12px; align-items: start; }
+    @media (max-width: 860px) { .two { grid-template-columns: 1fr; } }
+
+    /* ---------- Graph drawing ---------- */
+    .graph-wrap { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; overflow-x: auto; }
+    svg.graph { display: block; width: 100%; height: auto; }
+    @media (max-width: 560px) { svg.graph { min-width: 520px; } }
+    .graph text { font-family: var(--sans); pointer-events: none; }
+    .graph .label { font-size: 17px; font-weight: 700; text-anchor: middle; dominant-baseline: central; fill: var(--text); }
+    .graph .sub { font-size: 12.5px; text-anchor: middle; fill: var(--muted); font-variant-numeric: tabular-nums;
+      paint-order: stroke; stroke: var(--bg); stroke-width: 4px; stroke-linejoin: round; }
+    .graph .node circle { fill: var(--surface); stroke: var(--text); stroke-width: 2; }
+    .graph .node.unvisited circle { stroke: var(--muted); stroke-dasharray: 3 3; }
+    .graph .ring { fill: none !important; stroke: var(--accent) !important; stroke-width: 2.5 !important; }
+    .graph .edge { stroke: var(--muted); stroke-width: 2.2; stroke-linecap: round; fill: none; }
+    .graph .edge.removed { stroke-dasharray: 2 6; opacity: 0.45; }
+    .graph .edge.bridge { stroke: var(--warn); stroke-width: 4; }
+    .graph .edge.safe { stroke: var(--ok); stroke-width: 3; }
+    .graph .edge.cycle { stroke: var(--accent); stroke-width: 4.5; }
+    .graph .edge.tree { stroke: var(--text); stroke-width: 3; }
+    .graph .edge.nontree { stroke: var(--ok); stroke-width: 3; stroke-dasharray: 7 5; }
+    .graph .edge.cover { stroke: var(--accent); stroke-width: 6; }
+    .graph .halo { stroke: var(--fresh); stroke-width: 12; stroke-linecap: round; opacity: 0.85; }
+    .graph .hit { stroke: transparent; stroke-width: 18; cursor: pointer; pointer-events: stroke; }
+    .graph .hit:hover + .hover-hint, .graph .hit:hover { stroke: color-mix(in srgb, var(--accent) 18%, transparent); }
+
+    .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 10px; font-size: 0.82rem; color: var(--muted); align-items: center; }
+    .legend span { display: inline-flex; align-items: center; gap: 6px; }
+
+    .status { font-size: 1rem; }
+    .status p { margin: 0 0 8px; }
+    .status code, .narration code, .found b { white-space: nowrap; }
+    .big { font-size: 1.5rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+    .ok-text { color: var(--ok); font-weight: 600; }
+    .bad-text { color: var(--warn); font-weight: 600; }
+    .note { font-size: 0.88rem; color: var(--muted); margin: 8px 0 0; }
+    .counts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
+    .count-box { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; background: var(--bg); }
+    .count-box .big { display: block; }
+    .count-box small { color: var(--muted); font-size: 0.82rem; }
+    .btn-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+
+    /* ---------- Stepper ---------- */
+    .narration { min-height: 6.5em; }
+    .narration p { margin: 0 0 6px; }
+    .narration code { white-space: nowrap; }
+    pre.code { margin: 0; font-size: 0.82rem; line-height: 1.6; overflow-x: auto; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 8px 0; }
+    pre.code span { display: block; padding: 0 12px; border-left: 3px solid transparent; }
+    pre.code span.hl { background: color-mix(in srgb, var(--accent) 16%, transparent); border-left-color: var(--accent); }
+    .stepcount { font-size: 0.85rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+    .found { margin-top: 12px; font-size: 0.95rem; }
+    .found b { font-family: var(--mono); font-size: 0.9rem; }
+
+    /* ---------- Prose ---------- */
+    .rules { padding-left: 1.2em; }
+    .rules li { margin-bottom: 0.5em; }
+    main h3 { margin: 1.8em 0 0.4em; font-size: 1.15rem; }
+    pre.snippet { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.5; }
+    pre.snippet code { background: none; padding: 0; }
+    table.cmp { border-collapse: collapse; width: 100%; font-size: 0.93rem; margin: 0.6em 0 1.2em; }
+    .cmp th, .cmp td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+    .cmp thead th { color: var(--muted); font-weight: 600; font-size: 0.82rem; }
+    .callout2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 1.2em 0; }
+    @media (max-width: 600px) { .callout2 { grid-template-columns: 1fr; } }
+    .callout2 > div { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; }
+    .callout2 h4 { margin: 0 0 6px; font-size: 1rem; }
+    .callout2 p { margin: 0; font-size: 0.95rem; }
+  </style>
+</head>
+<body>
+  <main>
+    <nav class="crumbs"><a href="../../">Explainers</a><span>/</span><a href="../">Data Structures &amp; Algorithms</a></nav>
+    <h1>Which edges can you remove?</h1>
+    <p class="lede">You have an undirected graph and want to delete edges without disconnecting it. That sounds like one question, but it's really two, and they have different answers.</p>
+
+    <div class="callout2">
+      <div>
+        <h4>1. One at a time</h4>
+        <p>Which single edges can I remove and stay connected? The answer is every edge that isn't a <strong>bridge</strong>. It's unique, and one depth-first search finds all of them.</p>
+      </div>
+      <div>
+        <h4>2. All at once</h4>
+        <p>What's the largest set of edges I can remove together and stay connected? Everything outside a <strong>spanning tree</strong>: <code>E − (V − 1)</code> edges. Many different sets work.</p>
+      </div>
+    </div>
+
+    <p>A triangle shows why they differ. Remove any one of its three edges and it stays connected, so <em>no</em> edge is a bridge. But you can't remove all three: at most one can go at a time.</p>
+
+    <h2>Bridges</h2>
+    <p>A <strong>bridge</strong> (also called a <em>cut edge</em>) is an edge whose removal splits the graph into more pieces. Two equivalent ways to say it:</p>
+    <ul class="rules">
+      <li>Removing it leaves its two endpoints with no other path between them.</li>
+      <li><strong>It doesn't lie on any cycle.</strong> If an edge is on a cycle, the rest of the cycle is a detour around it.</li>
+    </ul>
+    <p>A graph with no bridges at all is called <strong>2-edge-connected</strong>: you have to cut at least two edges to disconnect it.</p>
+
+    <h2>Try it</h2>
+    <p>In <strong>One at a time</strong> mode, click any edge to remove just that edge. If the graph stays connected, the detour gets highlighted; if it splits, the pieces get colored. In <strong>All at once</strong> mode, removals add up: see how many you can remove before something breaks, or ask for a maximum set.</p>
+  </main>
+
+  <section class="wide" aria-label="Edge removal playground">
+    <div class="panel">
+      <div class="toolbar">
+        <div class="seg" role="group" aria-label="Mode">
+          <button id="mode-one" aria-pressed="true">One at a time</button>
+          <button id="mode-all" aria-pressed="false">All at once</button>
+        </div>
+        <select id="p-preset" aria-label="Graph"></select>
+        <label class="toggle"><input type="checkbox" id="p-show"> Show bridges</label>
+        <span class="spacer"></span>
+        <button id="p-restore">Restore all edges</button>
+      </div>
+      <div class="two">
+        <div>
+          <div class="graph-wrap"><svg class="graph" id="p-graph" role="img" aria-label="The graph. Click an edge to remove it."></svg></div>
+          <div class="legend" aria-hidden="true">
+            <span><svg width="26" height="10"><line x1="1" y1="5" x2="25" y2="5" style="stroke:var(--warn);stroke-width:4"/></svg>bridge</span>
+            <span><svg width="26" height="10"><line x1="1" y1="5" x2="25" y2="5" style="stroke:var(--accent);stroke-width:4.5"/></svg>detour around a removed edge</span>
+            <span><svg width="26" height="10"><line x1="1" y1="5" x2="25" y2="5" style="stroke:var(--muted);stroke-width:2.2;stroke-dasharray:2 6;opacity:.6"/></svg>removed</span>
+          </div>
+        </div>
+        <div class="panel status" id="p-status" aria-live="polite"></div>
+      </div>
+    </div>
+  </section>
+
+  <main style="padding-top: 0">
+    <h2>Finding every bridge in one search</h2>
+    <p>The brute-force way is to remove each edge in turn and check whether the graph is still connected: one full search per edge, O(E · (V + E)). A single depth-first search can do the whole job in <strong>O(V + E)</strong>, using the same <code>index</code> / <code>low</code> idea as <a href="../tarjan-scc/">Tarjan's SCC algorithm</a>.</p>
+    <p>As the DFS runs, every edge becomes one of two kinds:</p>
+    <ul class="rules">
+      <li><strong>Tree edges</strong> lead to a vertex the search hasn't seen yet. Together they form a spanning tree (the <em>DFS tree</em>).</li>
+      <li><strong>Non-tree edges</strong> lead to a vertex that's already been visited. In an undirected DFS, a non-tree edge always connects a vertex to one of its own <em>ancestors</em> in the tree.</li>
+    </ul>
+    <p>That gives the two moments of decision:</p>
+    <ul class="rules">
+      <li><strong>A non-tree edge is safe the moment you see it.</strong> Its endpoints are already connected through tree edges, so it closes a cycle.</li>
+      <li><strong>A tree edge <code>u–v</code> is decided when the search returns from <code>v</code>.</strong> By then <code>low[v]</code> holds the earliest <code>index</code> that anything in <code>v</code>'s subtree can reach by one non-tree edge. If <code>low[v] &gt; index[u]</code>, nothing under <code>v</code> reaches back to <code>u</code> or above it, so <code>u–v</code> is the only way in: <strong>a bridge</strong>. Otherwise some non-tree edge loops around it, and it's safe.</li>
+    </ul>
+    <p>Which edges become tree edges depends on where the search starts, so that part is arbitrary. <strong>Whether an edge is a bridge is not.</strong> Use the start-vertex menu below: the tree changes every time, but the bridges never do.</p>
+  </main>
+
+  <section class="wide" aria-label="Step-by-step bridge finding">
+    <div class="panel">
+      <div class="toolbar">
+        <select id="s-preset" aria-label="Graph"></select>
+        <label>Start at <select id="s-start" aria-label="Start vertex"></select></label>
+        <span class="spacer"></span>
+        <button id="s-reset" title="Back to the start">⏮</button>
+        <button id="s-back" title="Previous step (←)">← Back</button>
+        <button id="s-next" class="primary" title="Next step (→)">Next →</button>
+        <button id="s-play">▶ Play</button>
+      </div>
+      <div class="two">
+        <div>
+          <div class="graph-wrap"><svg class="graph" id="s-graph" role="img" aria-label="Depth-first search for bridges"></svg></div>
+          <div class="legend" aria-hidden="true">
+            <span><svg width="26" height="10"><line x1="1" y1="5" x2="25" y2="5" style="stroke:var(--text);stroke-width:3"/></svg>tree edge, undecided</span>
+            <span><svg width="26" height="10"><line x1="1" y1="5" x2="25" y2="5" style="stroke:var(--ok);stroke-width:3;stroke-dasharray:7 5"/></svg>non-tree edge (safe)</span>
+            <span><svg width="26" height="10"><line x1="1" y1="5" x2="25" y2="5" style="stroke:var(--ok);stroke-width:3"/></svg>tree edge, safe</span>
+            <span><svg width="26" height="10"><line x1="1" y1="5" x2="25" y2="5" style="stroke:var(--warn);stroke-width:4"/></svg>bridge</span>
+            <span>numbers: <code>index / low</code></span>
+          </div>
+          <div class="panel narration" style="margin-top:12px">
+            <h3>What's happening <span class="stepcount" id="s-count" style="float:right"></span></h3>
+            <div id="s-text" aria-live="polite"></div>
+          </div>
+        </div>
+        <div>
+          <div class="panel">
+            <h3>Pseudocode</h3>
+            <pre class="code" id="s-code"></pre>
+            <div class="found" id="s-found"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <main style="padding-top: 0">
+    <h3>Seeing why: each non-tree edge covers a path</h3>
+    <p>Here's another way to see what <code>low</code> is computing. Every non-tree edge <code>x–y</code>, together with the tree path between <code>x</code> and <code>y</code>, forms a cycle. So it <strong>covers</strong> every tree edge on that path: none of them can be a bridge. <strong>The bridges are exactly the tree edges no non-tree edge covers.</strong> When the stepper above finishes, click any dashed edge to see what it covers.</p>
+
+    <h2>All at once: spanning trees</h2>
+    <p>For the second question, you want to keep as <em>few</em> edges as possible while staying connected. A connected graph on <code>V</code> vertices needs at least <code>V − 1</code> edges, and a <strong>spanning tree</strong> (a tree that touches every vertex) has exactly that many. So the most you can remove at once is <code>E − (V − 1)</code>, or <code>E − (V − c)</code> if the graph starts with <code>c</code> separate pieces.</p>
+    <p>Finding one is easy: BFS, DFS, or <a href="../union-find/">union find</a> all work in about O(V + E). With union find, walk the edges and keep each one only if <code>union(u, v)</code> actually merges two groups. Every rejected edge closes a cycle and can go.</p>
+
+    <h3>How the two answers fit together</h3>
+    <ul class="rules">
+      <li><strong>Every bridge is in every spanning tree.</strong> You can't stay connected without it.</li>
+      <li>So every spanning tree is <strong>all the bridges, plus enough edges chosen from the cycles</strong> to connect everything else. The bridges are forced; the cycle edges are the choices. That's why the maximum set isn't unique: try <em>Show a maximum set</em> a few times in the playground.</li>
+      <li>The bridges are a subset of every spanning tree, and a <em>strict</em> subset exactly when the graph has a cycle. If the graph is itself a tree, every edge is a bridge.</li>
+      <li>In the example graph, 10 of the 13 edges are individually removable, but only 3 can be removed at once.</li>
+    </ul>
+    <p>When edges have weights and you want the cheapest set to keep, you need a <strong>minimum spanning tree</strong>, which is the next explainer: <a href="../mst/">Minimum spanning trees</a>.</p>
+
+    <h2>The vertex version: articulation points</h2>
+    <p>The same DFS also finds <strong>articulation points</strong> (cut vertices): vertices whose removal disconnects the graph. When the search returns from child <code>v</code> to <code>u</code>, check <code>low[v] ≥ index[u]</code> instead of <code>&gt;</code>. If nothing under <code>v</code> reaches <em>above</em> <code>u</code>, then <code>u</code> is the only link to <code>v</code>'s subtree. The root of the DFS is a special case: it's an articulation point exactly when it has two or more tree children.</p>
+
+    <h2>What changes for directed graphs</h2>
+    <p>For directed graphs the natural goal is to keep the graph <strong>strongly connected</strong> (or keep its <a href="../tarjan-scc/">SCCs</a> intact). The one-at-a-time question stays easy, but the all-at-once question becomes very hard:</p>
+    <table class="cmp">
+      <thead><tr><th scope="col"></th><th scope="col">One at a time</th><th scope="col">All at once</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">Undirected (or weakly connected)</th><td>Bridges: one DFS, O(V + E)</td><td>Remove everything outside a spanning tree, O(V + E)</td></tr>
+        <tr><th scope="row">Strongly connected</th><td><em>Strong bridges</em>: O(V + E) using dominator trees of the graph and its reverse (Italiano, Laura &amp; Santaroni, 2012)</td><td><strong>NP-hard</strong>: keeping just <code>V</code> edges is possible only if the graph has a Hamiltonian cycle</td></tr>
+      </tbody>
+    </table>
+    <p>The DFS shortcut also mostly disappears. In an undirected DFS, every non-tree edge is safe on sight because the tree path works in both directions. In a directed DFS, the tree path only goes one way, so only <em>forward</em> edges (to an already-finished descendant) are safe on sight. Back edges and cross edges might be the only way back. In the cycle <code>A → B → C → A</code>, the back edge <code>C → A</code> is essential. To keep SCCs intact you first need the SCCs themselves (from Tarjan or Kosaraju). After that, edges <em>between</em> SCCs can always go, and edges inside each SCC are checked for strong bridges.</p>
+
+    <h2>The code</h2>
+    <p>Bridge finding in Go. Edges carry IDs, so the "skip the edge we came in on" rule stays correct even with duplicate edges between the same two vertices.</p>
+<pre class="snippet"><code>// Edge is an undirected edge between vertices U and V.
+type Edge struct{ U, V int }
+
+// Bridges returns the positions (in edges) of every bridge in an undirected
+// graph with vertices 0..n-1. Duplicate edges are handled correctly.
+func Bridges(n int, edges []Edge) []int {
+	type half struct{ to, id int }
+	adj := make([][]half, n)
+	for id, e := range edges {
+		adj[e.U] = append(adj[e.U], half{e.V, id})
+		adj[e.V] = append(adj[e.V], half{e.U, id})
+	}
+	index := make([]int, n)
+	low := make([]int, n)
+	for i := range index {
+		index[i] = -1 // -1 means "not visited yet"
+	}
+	counter := 0
+	var bridges []int
+
+	var dfs func(u, cameFrom int)
+	dfs = func(u, cameFrom int) {
+		index[u], low[u] = counter, counter
+		counter++
+		for _, h := range adj[u] {
+			if h.id == cameFrom {
+				continue // don't walk straight back along the edge we arrived on
+			}
+			if index[h.to] == -1 { // tree edge: explore, then decide
+				dfs(h.to, h.id)
+				low[u] = min(low[u], low[h.to])
+				if low[h.to] &gt; index[u] {
+					bridges = append(bridges, h.id) // nothing below reaches u or above
+				}
+			} else { // non-tree edge: it closes a cycle, so it's never a bridge
+				low[u] = min(low[u], index[h.to])
+			}
+		}
+	}
+
+	for v := 0; v &lt; n; v++ {
+		if index[v] == -1 {
+			dfs(v, -1)
+		}
+	}
+	return bridges
+}</code></pre>
+
+    <footer>Part of <a href="../">Data Structures &amp; Algorithms</a> in <a href="../../">Explainers</a>.</footer>
+  </main>
+
+  <script>
+  const $ = id => document.getElementById(id);
+
+  // =====================================================================
+  // Graphs
+  // =====================================================================
+  const PRESETS = {
+    example: {
+      name: 'Example graph',
+      h: 400,
+      nodes: { A: [70, 90], B: [70, 300], C: [190, 195], D: [320, 195], E: [415, 90], F: [510, 195], G: [415, 300], K: [300, 340], H: [620, 195], I: [705, 95], J: [705, 300] },
+      edges: 'A-B B-C C-A C-D D-E E-F F-G G-D F-H H-I I-J J-H G-K',
+    },
+    triangle: {
+      name: 'Triangle',
+      h: 340,
+      nodes: { A: [380, 70], B: [250, 270], C: [510, 270] },
+      edges: 'A-B B-C C-A',
+    },
+    path: {
+      name: 'Path',
+      h: 220,
+      nodes: { A: [160, 110], B: [310, 110], C: [460, 110], D: [610, 110] },
+      edges: 'A-B B-C C-D',
+    },
+  };
+
+  function makeGraph(p) {
+    const ids = Object.keys(p.nodes);
+    const edges = p.edges.split(' ').map((s, i) => { const [a, b] = s.split('-'); return { id: i, a, b, name: `${a}–${b}` }; });
+    const adj = Object.fromEntries(ids.map(v => [v, []]));
+    for (const e of edges) { adj[e.a].push({ to: e.b, e: e.id }); adj[e.b].push({ to: e.a, e: e.id }); }
+    return { p, ids, edges, adj };
+  }
+
+  // Connected components ignoring removed edges. Returns { comp: {v: n}, count }.
+  function components(g, removed) {
+    const comp = {};
+    let count = 0;
+    for (const s of g.ids) {
+      if (comp[s] !== undefined) continue;
+      const stack = [s]; comp[s] = count;
+      while (stack.length) {
+        const v = stack.pop();
+        for (const { to, e } of g.adj[v]) if (!removed.has(e) && comp[to] === undefined) { comp[to] = count; stack.push(to); }
+      }
+      count++;
+    }
+    return { comp, count };
+  }
+
+  // All bridges (edge ids), via DFS low-link.
+  function bridgesOf(g) {
+    const index = {}, low = {}, out = new Set();
+    let counter = 0;
+    function dfs(u, cameFrom) {
+      index[u] = low[u] = counter++;
+      for (const { to, e } of g.adj[u]) {
+        if (e === cameFrom) continue;
+        if (index[to] === undefined) {
+          dfs(to, e);
+          low[u] = Math.min(low[u], low[to]);
+          if (low[to] > index[u]) out.add(e);
+        } else low[u] = Math.min(low[u], index[to]);
+      }
+    }
+    for (const v of g.ids) if (index[v] === undefined) dfs(v, null);
+    return out;
+  }
+
+  // A path from a to b that avoids the removed edges (edge ids), or null.
+  function pathAvoiding(g, a, b, removed) {
+    const prev = { [a]: null };
+    const queue = [a];
+    while (queue.length) {
+      const v = queue.shift();
+      if (v === b) break;
+      for (const { to, e } of g.adj[v]) if (!removed.has(e) && !(to in prev)) { prev[to] = { v, e }; queue.push(to); }
+    }
+    if (!(b in prev)) return null;
+    const path = [];
+    for (let v = b; prev[v]; v = prev[v].v) path.push(prev[v].e);
+    return path;
+  }
+
+  // A random spanning forest via union find over shuffled edges. Returns tree edge ids.
+  function randomSpanningTree(g) {
+    const parent = Object.fromEntries(g.ids.map(v => [v, v]));
+    const find = x => (parent[x] === x ? x : (parent[x] = find(parent[x])));
+    const order = g.edges.map(e => e.id);
+    for (let i = order.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [order[i], order[j]] = [order[j], order[i]]; }
+    const tree = new Set();
+    for (const id of order) {
+      const e = g.edges[id], ra = find(e.a), rb = find(e.b);
+      if (ra !== rb) { parent[ra] = rb; tree.add(id); }
+    }
+    return tree;
+  }
+
+  // =====================================================================
+  // Drawing
+  // =====================================================================
+  const R = 20, W = 780;
+  const COMP_COLORS = ['--s1', '--s2', '--s3', '--s4'];
+
+  function drawGraph(svg, g, o) {
+    svg.setAttribute('viewBox', `0 0 ${W} ${g.p.h}`);
+    const P = g.p.nodes;
+    let s = '';
+    for (const e of g.edges) {
+      const [x1, y1] = P[e.a], [x2, y2] = P[e.b];
+      if (o.halo && o.halo.has(e.id)) s += `<line class="halo" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`;
+    }
+    for (const e of g.edges) {
+      const [x1, y1] = P[e.a], [x2, y2] = P[e.b];
+      s += `<line class="edge ${o.edgeClass(e)}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`;
+    }
+    if (o.clickable) for (const e of g.edges) {
+      const [x1, y1] = P[e.a], [x2, y2] = P[e.b];
+      s += `<line class="hit" data-edge="${e.id}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"><title>${o.edgeTitle ? o.edgeTitle(e) : e.name}</title></line>`;
+    }
+    for (const v of g.ids) {
+      const [x, y] = P[v];
+      const st = o.nodeStyle ? o.nodeStyle(v) : {};
+      s += `<g class="node ${st.cls || ''}">`;
+      if (st.ring) s += `<circle class="ring" cx="${x}" cy="${y}" r="${R + 6}"/>`;
+      s += `<circle cx="${x}" cy="${y}" r="${R}" style="${st.style || ''}"/><text class="label" x="${x}" y="${y}">${v}</text>`;
+      if (st.sub != null) s += `<text class="sub" x="${x}" y="${y + R + 16}">${st.sub}</text>`;
+      s += '</g>';
+    }
+    svg.innerHTML = s;
+  }
+
+  const compStyle = (comp, count, v) => {
+    if (count <= 1) return '';
+    const c = COMP_COLORS[comp[v] % COMP_COLORS.length];
+    return `fill:color-mix(in srgb, var(${c}) 22%, var(--surface));stroke:var(${c});stroke-width:3`;
+  };
+  const listEdges = (g, ids) => [...ids].sort((a, b) => a - b).map(id => `<code>${g.edges[id].name}</code>`).join(', ');
+
+  // =====================================================================
+  // Playground
+  // =====================================================================
+  const play = { key: 'example', g: null, bridges: null, mode: 'one', removed: new Set(), last: null, showBridges: false };
+
+  function loadPlayground(key) {
+    play.key = key;
+    play.g = makeGraph(PRESETS[key]);
+    play.bridges = bridgesOf(play.g);
+    play.removed = new Set();
+    play.last = null;
+    renderPlayground();
+  }
+
+  function renderPlayground() {
+    const { g, bridges, removed, mode } = play;
+    const { comp, count } = components(g, removed);
+    let detour = new Set();
+    if (mode === 'one' && play.last != null && count === 1) {
+      const e = g.edges[play.last];
+      detour = new Set(pathAvoiding(g, e.a, e.b, removed) || []);
+    }
+    drawGraph($('p-graph'), g, {
+      clickable: true,
+      edgeTitle: e => removed.has(e.id) ? `Put ${e.name} back` : `Remove ${e.name}`,
+      edgeClass: e => {
+        if (removed.has(e.id)) return 'removed';
+        if (detour.has(e.id)) return 'cycle';
+        if (play.showBridges && bridges.has(e.id)) return 'bridge';
+        return '';
+      },
+      nodeStyle: v => ({ style: compStyle(comp, count, v) }),
+    });
+
+    const V = g.ids.length, E = g.edges.length;
+    const maxAtOnce = E - (V - 1);
+    const individually = E - bridges.size;
+    const st = $('p-status');
+    let html = '';
+    if (mode === 'one') {
+      if (play.last == null) {
+        html = `<p>Click an edge to remove just that edge.</p>`;
+      } else {
+        const e = g.edges[play.last];
+        html = count === 1
+          ? `<p class="ok-text">Still connected.</p><p>Removing <code>${e.name}</code> is safe: ${e.a} and ${e.b} are still joined by the highlighted detour, so <code>${e.name}</code> lies on a cycle.</p>`
+          : `<p class="bad-text">Disconnected: ${count} pieces.</p><p><code>${e.name}</code> is a <strong>bridge</strong>. It was the only connection between the colored pieces.</p>`;
+        html += `<p class="note">Click it again to put it back, or click another edge.</p>`;
+      }
+    } else {
+      html = `<p>Removed <span class="big">${removed.size}</span> edge${removed.size === 1 ? '' : 's'}: ` +
+        (count === 1 ? `<span class="ok-text">still connected</span>` : `<span class="bad-text">disconnected into ${count} pieces</span>`) + `.</p>` +
+        (removed.size === maxAtOnce && count === 1 ? `<p>That's a maximum set: what's left is a spanning tree. Every bridge is still there${bridges.size ? ` (${listEdges(g, bridges)})` : ''}.</p>` : '') +
+        `<div class="btn-row"><button id="p-maxset" class="primary">Show a maximum set</button></div>
+         <p class="note">Each click picks a different random spanning tree and removes everything else. The bridges are kept every time.</p>`;
+    }
+    html += `<div class="counts">
+      <div class="count-box"><span class="big">${individually}</span><small>edges removable one at a time (all but the ${bridges.size} bridge${bridges.size === 1 ? '' : 's'})</small></div>
+      <div class="count-box"><span class="big">${maxAtOnce}</span><small>edges removable all at once: E − (V − 1) = ${E} − ${V - 1}</small></div>
+    </div>`;
+    st.innerHTML = html;
+    const mx = $('p-maxset');
+    if (mx) mx.addEventListener('click', () => {
+      const tree = randomSpanningTree(play.g);
+      play.removed = new Set(play.g.edges.map(e => e.id).filter(id => !tree.has(id)));
+      renderPlayground();
+    });
+    $('mode-one').setAttribute('aria-pressed', mode === 'one');
+    $('mode-all').setAttribute('aria-pressed', mode === 'all');
+  }
+
+  $('p-graph').addEventListener('click', e => {
+    const hit = e.target.closest('[data-edge]');
+    if (!hit) return;
+    const id = Number(hit.dataset.edge);
+    if (play.mode === 'one') {
+      if (play.removed.has(id)) { play.removed = new Set(); play.last = null; }
+      else { play.removed = new Set([id]); play.last = id; }
+    } else {
+      play.removed.has(id) ? play.removed.delete(id) : play.removed.add(id);
+    }
+    renderPlayground();
+  });
+  $('mode-one').addEventListener('click', () => { play.mode = 'one'; play.removed = new Set(); play.last = null; renderPlayground(); });
+  $('mode-all').addEventListener('click', () => { play.mode = 'all'; play.removed = new Set(); play.last = null; renderPlayground(); });
+  $('p-show').addEventListener('change', e => { play.showBridges = e.target.checked; renderPlayground(); });
+  $('p-restore').addEventListener('click', () => { play.removed = new Set(); play.last = null; renderPlayground(); });
+  $('p-preset').innerHTML = Object.entries(PRESETS).map(([k, p]) => `<option value="${k}">${p.name}</option>`).join('');
+  $('p-preset').addEventListener('change', e => loadPlayground(e.target.value));
+
+  // =====================================================================
+  // Step-by-step bridge finding
+  // =====================================================================
+  const CODE = [
+    ['visit', 'dfs(u, cameFrom):'],
+    ['visit', '  index[u] = low[u] = counter++'],
+    ['', '  for each edge e = u–w:'],
+    ['parent', '    if e == cameFrom: skip it'],
+    ['tree', '    if w has no index:   // tree edge'],
+    ['tree', '      dfs(w, e)'],
+    ['return', '      low[u] = min(low[u], low[w])'],
+    ['return', '      if low[w] > index[u]: e is a bridge'],
+    ['nontree', '    else:                // non-tree edge'],
+    ['nontree', '      low[u] = min(low[u], index[w])'],
+    ['nontree', '      (e closes a cycle: never a bridge)'],
+  ];
+  $('s-code').innerHTML = CODE.map(([, t]) => `<span>${t.replace(/</g, '&lt;') || ' '}</span>`).join('');
+  const codeLines = [...$('s-code').children];
+
+  function bridgeTrace(g, start) {
+    const index = {}, low = {}, parentEdge = {}, state = {}, steps = [];
+    let counter = 0;
+    const snap = (line, msg, x = {}) => steps.push({
+      line, msg, index: { ...index }, low: { ...low }, state: { ...state }, parentEdge: { ...parentEdge },
+      cur: x.cur ?? null, edge: x.edge ?? null, changed: x.changed ?? [],
+    });
+    const E = id => g.edges[id].name;
+    snap('', `<p>Every edge starts unclassified. The search starts at <b>${start}</b>; any vertex works, and the bridges come out the same.</p>`);
+
+    function dfs(u, cameFrom) {
+      index[u] = low[u] = counter++;
+      snap('visit', `<p>Visit <b>${u}</b>: <code>index[${u}] = low[${u}] = ${index[u]}</code>.</p>`, { cur: u, changed: [u] });
+      for (const { to: w, e } of g.adj[u]) {
+        if (e === cameFrom) {
+          snap('parent', `<p>Edge <b>${E(e)}</b> is the tree edge we arrived on. Skip it: otherwise every vertex would look like it can reach back to its parent, and no tree edge would ever be a bridge.</p>`, { cur: u, edge: e });
+          continue;
+        }
+        if (index[w] === undefined) {
+          state[e] = 'tree';
+          parentEdge[w] = e;
+          snap('tree', `<p>Edge <b>${E(e)}</b>: ${w} hasn't been visited, so this is a <b>tree edge</b>. Recurse into ${w}. We can't tell yet whether it's a bridge: that depends on what's below ${w}.</p>`, { cur: u, edge: e });
+          dfs(w, e);
+          const old = low[u];
+          low[u] = Math.min(low[u], low[w]);
+          const isBridge = low[w] > index[u];
+          state[e] = isBridge ? 'bridge' : 'safe';
+          snap('return', `<p>Back at <b>${u}</b> after finishing ${w}, so <code>low[${w}] = ${low[w]}</code> is final. ` +
+            `<code>low[${u}] = min(${old}, ${low[w]}) = ${low[u]}</code>.</p>` +
+            `<p>Is <code>low[${w}] &gt; index[${u}]</code>, that is, ${low[w]} &gt; ${index[u]}? ` +
+            (isBridge
+              ? `<b>Yes.</b> Nothing under ${w} reaches back to ${u} or above, so <b>${E(e)} is a bridge</b>.`
+              : `<b>No.</b> Some non-tree edge under ${w} reaches back to ${u} or above it, so <b>${E(e)} is on a cycle: safe</b>.`) + `</p>`,
+            { cur: u, edge: e, changed: low[u] < old ? [u] : [] });
+        } else if (state[e] === undefined) {
+          state[e] = 'nontree';
+          const old = low[u];
+          low[u] = Math.min(low[u], index[w]);
+          snap('nontree', `<p>Edge <b>${E(e)}</b>: ${w} is already visited (an ancestor of ${u}), so this is a <b>non-tree edge</b>. ${u} and ${w} are already connected through tree edges, so this edge closes a cycle: <b>safe, decided on sight</b>.</p>` +
+            `<p><code>low[${u}] = min(${old}, index[${w}] = ${index[w]}) = ${low[u]}</code>.</p>`,
+            { cur: u, edge: e, changed: low[u] < old ? [u] : [] });
+        }
+        // else: the other end of a non-tree edge, seen from the ancestor. Already classified.
+      }
+    }
+    const order = [start, ...g.ids.filter(v => v !== start)];
+    for (const v of order) if (index[v] === undefined) dfs(v, null);
+    const bridges = g.edges.filter(e => state[e.id] === 'bridge').map(e => e.id);
+    snap('', `<p><b>Done.</b> ${bridges.length ? `The bridges are ${listEdges(g, bridges)}.` : 'There are no bridges: every edge lies on a cycle.'} Every other edge can be removed on its own.</p>` +
+      (g.edges.some(e => state[e.id] === 'nontree') ? `<p><b>Click a dashed non-tree edge</b> to see which tree edges it covers.</p>` : ''));
+    return { steps, bridges };
+  }
+
+  const step = { key: 'example', g: null, start: 'A', trace: null, i: 0, timer: null, cover: null };
+
+  function loadStepper(key, start) {
+    stopPlay();
+    step.key = key;
+    step.g = makeGraph(PRESETS[key]);
+    $('s-start').innerHTML = step.g.ids.map(v => `<option>${v}</option>`).join('');
+    step.start = start && step.g.ids.includes(start) ? start : step.g.ids[0];
+    $('s-start').value = step.start;
+    step.trace = bridgeTrace(step.g, step.start);
+    step.cover = null;
+    showStep(0);
+  }
+
+  // Tree path covered by non-tree edge e (from the deeper endpoint up to the other).
+  function coveredPath(s, e) {
+    const ed = step.g.edges[e];
+    let [lo, hi] = s.index[ed.a] > s.index[ed.b] ? [ed.a, ed.b] : [ed.b, ed.a];
+    const out = new Set();
+    while (lo !== hi && s.parentEdge[lo] !== undefined) {
+      const pe = s.parentEdge[lo];
+      out.add(pe);
+      const pd = step.g.edges[pe];
+      lo = pd.a === lo ? pd.b : pd.a;
+    }
+    return out;
+  }
+
+  function showStep(i) {
+    const steps = step.trace.steps;
+    step.i = Math.max(0, Math.min(steps.length - 1, i));
+    const s = steps[step.i];
+    const last = step.i === steps.length - 1;
+    const covered = last && step.cover != null ? coveredPath(s, step.cover) : new Set();
+    drawGraph($('s-graph'), step.g, {
+      clickable: last,
+      edgeTitle: e => s.state[e.id] === 'nontree' ? `Show what ${e.name} covers` : e.name,
+      halo: s.edge != null ? new Set([s.edge]) : (step.cover != null && last ? new Set([step.cover]) : null),
+      edgeClass: e => {
+        if (covered.has(e.id)) return 'cover';
+        return { tree: 'tree', safe: 'safe', bridge: 'bridge', nontree: 'nontree' }[s.state[e.id]] || '';
+      },
+      nodeStyle: v => ({
+        cls: s.index[v] === undefined ? 'unvisited' : '',
+        ring: s.cur === v,
+        sub: s.index[v] === undefined ? '–' : `${s.index[v]} / ${s.low[v]}`,
+        style: s.changed.includes(v) ? 'fill:color-mix(in srgb, var(--fresh) 55%, var(--surface))' : '',
+      }),
+    });
+    let text = s.msg;
+    if (last && step.cover != null) {
+      text += `<p><code>${step.g.edges[step.cover].name}</code> covers ${covered.size ? listEdges(step.g, covered) : 'nothing'}: together they form a cycle, so none of those tree edges is a bridge.</p>`;
+    }
+    $('s-text').innerHTML = text;
+    $('s-count').textContent = `step ${step.i + 1} of ${steps.length}`;
+    codeLines.forEach((el, k) => el.classList.toggle('hl', s.line !== '' && CODE[k][0] === s.line));
+    const found = step.g.edges.filter(e => s.state[e.id] === 'bridge');
+    $('s-found').innerHTML = `Bridges found so far: ${found.length ? found.map(e => `<b>${e.name}</b>`).join(', ') : '<span class="note">none yet</span>'}`;
+    $('s-back').disabled = step.i === 0;
+    $('s-reset').disabled = step.i === 0;
+    $('s-next').disabled = last;
+    if (last) stopPlay();
+  }
+
+  function stopPlay() { clearInterval(step.timer); step.timer = null; $('s-play').textContent = '▶ Play'; }
+  $('s-play').addEventListener('click', () => {
+    if (step.timer) return stopPlay();
+    if (step.i === step.trace.steps.length - 1) showStep(0);
+    $('s-play').textContent = '❚❚ Pause';
+    step.timer = setInterval(() => showStep(step.i + 1), 1100);
+  });
+  $('s-next').addEventListener('click', () => { stopPlay(); showStep(step.i + 1); });
+  $('s-back').addEventListener('click', () => { stopPlay(); showStep(step.i - 1); });
+  $('s-reset').addEventListener('click', () => { stopPlay(); showStep(0); });
+  $('s-start').addEventListener('change', e => loadStepper(step.key, e.target.value));
+  $('s-preset').innerHTML = Object.entries(PRESETS).map(([k, p]) => `<option value="${k}">${p.name}</option>`).join('');
+  $('s-preset').addEventListener('change', e => loadStepper(e.target.value));
+  $('s-graph').addEventListener('click', e => {
+    const hit = e.target.closest('[data-edge]');
+    if (!hit) return;
+    const id = Number(hit.dataset.edge);
+    const s = step.trace.steps[step.i];
+    step.cover = s.state[id] === 'nontree' && step.cover !== id ? id : null;
+    showStep(step.i);
+  });
+  document.addEventListener('keydown', e => {
+    if (e.target.closest('input, select, textarea') || e.metaKey || e.ctrlKey || e.altKey) return;
+    const r = $('s-graph').getBoundingClientRect();
+    if (r.bottom < 0 || r.top > innerHeight) return;   // only when the stepper is on screen
+    if (e.key === 'ArrowRight') { stopPlay(); showStep(step.i + 1); e.preventDefault(); }
+    if (e.key === 'ArrowLeft') { stopPlay(); showStep(step.i - 1); e.preventDefault(); }
+  });
+
+  loadPlayground('example');
+  loadStepper('example', 'A');
+  </script>
+</body>
+</html>

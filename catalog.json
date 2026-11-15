@@ -30,6 +30,11 @@
         "slug": "tarjan-scc",
         "title": "Tarjan's SCC algorithm",
         "blurb": "Split a directed graph into strongly connected components with a single depth-first search, step by step."
+      },
+      {
+        "slug": "bridges",
+        "title": "Which edges can you remove?",
+        "blurb": "Bridges, spanning trees, and the difference between removing edges one at a time and all at once."
       }
     ]
   },
