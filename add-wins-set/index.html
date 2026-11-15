@@ -182,6 +182,7 @@
         <h3>Guided tour: add vs. remove</h3>
         <div class="tour-text" id="tour-text"><p>Walk through the classic conflict: one replica removes milk while the other adds it at the same time.</p></div>
         <div class="tour-controls">
+          <button id="tour-back" hidden>← Back</button>
           <button class="primary" id="tour-next">Start the tour</button>
           <button id="reset">Reset everything</button>
           <span class="tour-step" id="tour-step"></span>
@@ -470,6 +471,9 @@
     const btn = document.getElementById('tour-next');
     const stepEl = document.getElementById('tour-step');
     const textEl = document.getElementById('tour-text');
+    const backBtn = document.getElementById('tour-back');
+    backBtn.hidden = tourStep < 0;
+    backBtn.disabled = tourStep <= 0;
     if (tourStep < 0) {
       btn.textContent = 'Start the tour';
       stepEl.textContent = '';
@@ -484,6 +488,16 @@
   document.getElementById('tour-next').addEventListener('click', () => {
     tourStep = tourStep >= tour.length - 1 ? 0 : tourStep + 1;
     tour[tourStep].run();
+    render();
+    renderTour();
+  });
+
+  // Steps mutate the replicas, so going back rebuilds the state from scratch
+  // by replaying every step up to the target one.
+  document.getElementById('tour-back').addEventListener('click', () => {
+    if (tourStep <= 0) return;
+    tourStep -= 1;
+    for (let i = 0; i <= tourStep; i++) tour[i].run();
     render();
     renderTour();
   });
