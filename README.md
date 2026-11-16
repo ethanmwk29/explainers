@@ -3,6 +3,7 @@
 Small, interactive explainers, served with GitHub Pages at https://ethanmwk29.github.io/explainers/
 
 **Distributed Systems**
+- [Consistency models](https://ethanmwk29.github.io/explainers/distributed-systems/consistency-models/): Jepsen's single-object consistency models, with example histories.
 - [The add-wins set](https://ethanmwk29.github.io/explainers/distributed-systems/add-wins-set/): an interactive walkthrough of the OR-Set CRDT.
 - [Scuttlebutt gossip](https://ethanmwk29.github.io/explainers/distributed-systems/scuttlebutt/): efficient reconciliation and flow control for anti-entropy gossip.
 - [Vector clocks](https://ethanmwk29.github.io/explainers/distributed-systems/vector-clocks/): happened-before, Lamport clocks, and detecting concurrency with one counter per process.

@@ -1,0 +1,568 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Consistency Models</title>
+  <meta name="description" content="A tour of Jepsen's single-object consistency models, from linearizable down to the session guarantees, with example histories checked against each.">
+  <link rel="stylesheet" href="../../style.css?v=6">
+  <script src="../../theme.js"></script>
+  <style>
+    :root { --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --unavail: #e34948; }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) { --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --unavail: #e66767; }
+    }
+    :root[data-theme="dark"] { --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --unavail: #e66767; }
+
+    .wide { width: min(1100px, calc(100vw - 32px)); margin: 1.6em 0 2.2em; position: relative; left: 50%; transform: translateX(-50%); }
+    .panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; min-width: 0; }
+    .panel h3 { font-size: 0.75rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 10px; font-weight: 600; }
+    .two { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(280px, 1fr); gap: 14px; align-items: start; }
+    .two > * { min-width: 0; }
+    @media (max-width: 860px) { .two { grid-template-columns: minmax(0, 1fr); } }
+
+    /* ---------- Map ---------- */
+    .map-wrap { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; overflow-x: auto; }
+    svg.map { display: block; width: 100%; height: auto; min-width: 460px; }
+    .map text { font-family: var(--sans); pointer-events: none; }
+    .map .edge { stroke: var(--muted); stroke-width: 1.8; fill: none; }
+    .map .box { cursor: pointer; }
+    .map .box rect { fill: var(--surface); stroke-width: 2.5; }
+    .map .box.dim rect { stroke-dasharray: 4 4; opacity: 0.7; }
+    .map .box.sel rect { stroke-width: 4.5; }
+    .map .box:hover rect, .map .box:focus-visible rect { stroke-width: 4; }
+    .map .box:focus { outline: none; }
+    .map .name { font-size: 14px; font-weight: 700; text-anchor: middle; fill: var(--text); }
+    .map .avail { font-size: 10.5px; font-weight: 600; text-anchor: middle; text-transform: uppercase; letter-spacing: .05em; fill: var(--muted); }
+    .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 10px; font-size: 0.82rem; color: var(--muted); align-items: center; }
+    .legend span { display: inline-flex; align-items: center; gap: 6px; }
+    .info h2 { font-size: 1.25rem; margin: 0 0 6px; }
+    .info .tag { display: inline-block; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; padding: 2px 8px; border-radius: 999px; border: 1.5px solid; margin-bottom: 10px; }
+    .info p { margin: 0 0 10px; }
+    .info dl { margin: 0 0 10px; display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; font-size: 0.95rem; }
+    .info dt { color: var(--muted); font-weight: 600; }
+    .info dd { margin: 0; }
+    @media (max-width: 520px) { .info dl { grid-template-columns: 1fr; } }
+
+    /* ---------- History explorer ---------- */
+    .scen-list { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+    .scen-list button { font-size: 0.88rem; padding: 0.35em 0.8em; }
+    .scen-list button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+    .hist-wrap { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; overflow-x: auto; }
+    svg.hist { display: block; width: 100%; height: auto; min-width: 520px; }
+    .hist text { font-family: var(--sans); }
+    .hist .lane { stroke: var(--border); stroke-width: 1.5; }
+    .hist .pname { font-size: 14px; font-weight: 700; fill: var(--text); dominant-baseline: central; }
+    .hist .op rect { stroke-width: 2; }
+    .hist .op.w rect { fill: color-mix(in srgb, var(--s1) 22%, var(--surface)); stroke: var(--s1); }
+    .hist .op.r rect { fill: var(--surface); stroke: var(--s2); }
+    .hist .op.hot rect { stroke: var(--warn); stroke-width: 3.5; }
+    .hist .op text { font-size: 12.5px; font-weight: 700; text-anchor: middle; dominant-baseline: central; fill: var(--text); font-family: var(--mono); }
+    .hist .axis { stroke: var(--muted); stroke-width: 1.5; }
+    .hist .axis-label { font-size: 12px; fill: var(--muted); }
+    .scen-blurb { margin: 10px 0 0; }
+
+    .verdicts { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+    .verdicts li button {
+      width: 100%; display: grid; grid-template-columns: 1.6em 1fr auto; gap: 8px; align-items: center; text-align: left;
+      padding: 6px 10px; font-size: 0.93rem; border-radius: 8px;
+    }
+    .verdicts li button[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+    .verdicts .mark { font-weight: 800; font-size: 1.05rem; }
+    .verdicts .ok .mark { color: var(--ok); }
+    .verdicts .bad .mark { color: var(--warn); }
+    .verdicts .kind { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+    .verdicts .sep { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; font-weight: 600; margin: 8px 0 2px; }
+    .why { margin-top: 12px; }
+    .why p { margin: 0 0 8px; }
+    .why .order { font-family: var(--mono); font-size: 0.85rem; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; line-height: 1.7; overflow-x: auto; }
+    .why code { white-space: nowrap; }
+
+    .rules { padding-left: 1.2em; }
+    .rules li { margin-bottom: 0.5em; }
+    main h3 { margin: 1.8em 0 0.4em; font-size: 1.15rem; }
+    table.cmp { border-collapse: collapse; width: 100%; font-size: 0.93rem; margin: 0.6em 0 1.2em; }
+    .cmp th, .cmp td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+    .cmp thead th { color: var(--muted); font-weight: 600; font-size: 0.82rem; }
+    pre.snippet { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.5; }
+    pre.snippet code { background: none; padding: 0; }
+    .cite { font-size: 0.92rem; color: var(--muted); }
+    .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  </style>
+</head>
+<body>
+  <main>
+    <nav class="crumbs"><a href="../../">Explainers</a><span>/</span><a href="../">Distributed Systems</a></nav>
+    <h1>Consistency models</h1>
+    <p class="lede">When a database is replicated, two people can ask the same question and get different answers. A consistency model is the contract that says which answers are allowed.</p>
+    <p class="cite">This page follows the <a href="https://jepsen.io/consistency/models">map of consistency models</a> published by Jepsen, the project that tests real distributed databases against the guarantees they claim. It covers the branch for individual operations; the transactional models (serializability, snapshot isolation, and friends) are a separate story.</p>
+
+    <h2>What a consistency model is</h2>
+    <p>Picture several <strong>processes</strong> (clients, or threads, or servers) reading and writing a shared set of keys. Each operation takes some time: it's <em>called</em>, then later it <em>returns</em>. The record of every operation, who did it, when it started and ended, and what it returned is a <strong>history</strong>.</p>
+    <p>A <strong>consistency model</strong> is simply a rule for which histories are allowed. A stronger model allows fewer histories, which makes the system easier to reason about but harder to build and slower or less available. A weaker model allows more histories, including some surprising ones, in exchange for speed and availability.</p>
+    <p>In this page, every key starts at 0, <code>w x=1</code> means "write 1 to x", and <code>r x→0</code> means "read x and got 0".</p>
+
+    <h2>The map</h2>
+    <p>The models form a hierarchy: an arrow from A to B means every history allowed by A is also allowed by B, so A is stronger. Each box is also tagged with how <strong>available</strong> the model can be when the network splits (more on that below). Click a model to read about it.</p>
+  </main>
+
+  <section class="wide" aria-label="The consistency model hierarchy">
+    <div class="two">
+      <div>
+        <div class="map-wrap"><svg class="map" id="map" role="img" aria-label="Hierarchy of consistency models"></svg></div>
+        <div class="legend" aria-hidden="true">
+          <span><svg width="22" height="14"><rect x="1" y="1" width="20" height="12" rx="3" style="fill:var(--surface);stroke:var(--unavail);stroke-width:2.5"/></svg>unavailable during a partition</span>
+          <span><svg width="22" height="14"><rect x="1" y="1" width="20" height="12" rx="3" style="fill:var(--surface);stroke:var(--s4);stroke-width:2.5"/></svg>sticky available</span>
+          <span><svg width="22" height="14"><rect x="1" y="1" width="20" height="12" rx="3" style="fill:var(--surface);stroke:var(--s3);stroke-width:2.5"/></svg>totally available</span>
+        </div>
+      </div>
+      <div class="panel info" id="info" aria-live="polite"></div>
+    </div>
+  </section>
+
+  <main style="padding-top: 0">
+    <h2>Availability: what you give up</h2>
+    <p>During a <strong>network partition</strong>, some servers can't talk to others. Jepsen sorts the models by what's still possible then:</p>
+    <ul class="rules">
+      <li><strong>Totally available:</strong> every server that's up can keep answering every request, even cut off from the rest. (Monotonic reads, monotonic writes, writes follow reads.)</li>
+      <li><strong>Sticky available:</strong> every server that's up can keep answering, <em>as long as each client keeps talking to the same server</em>. Switch servers and the guarantee can break. (Causal, PRAM, read your writes.)</li>
+      <li><strong>Unavailable:</strong> some or all servers must refuse or wait until the partition heals. No model at or above sequential consistency can avoid this. (Sequential, linearizable, strict serializable.)</li>
+    </ul>
+    <p>This is the practical meaning of the CAP theorem: if you want linearizability, a partitioned server sometimes has to say "I can't answer that right now."</p>
+
+    <h2>Seeing the differences</h2>
+    <p>Each model is easiest to understand through a history it forbids. Pick an example below. The bars show when each operation started and finished in real time. The four main models are checked by this page in your browser, by searching for an order of operations that explains everything each process saw; the session guarantees are labeled by which one the example breaks. Click a model to see why.</p>
+  </main>
+
+  <section class="wide" aria-label="Example histories">
+    <div class="panel">
+      <div class="scen-list" id="scen-list" role="group" aria-label="Example histories"></div>
+      <div class="two">
+        <div>
+          <div class="hist-wrap"><svg class="hist" id="hist" role="img" aria-label="History timeline"></svg></div>
+          <p class="scen-blurb" id="scen-blurb"></p>
+          <div class="panel why" id="why" aria-live="polite"></div>
+        </div>
+        <div class="panel">
+          <h3>Which models allow this history?</h3>
+          <ul class="verdicts" id="verdicts"></ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <main style="padding-top: 0">
+    <h3>A subtlety about the session guarantees</h3>
+    <p>The session guarantees are usually combined, and that matters. In <em>Writes out of order</em>, P2 sees <code>y=1</code> and then <code>x=0</code>. That only counts as seeing P1's writes out of order if P2's second read is at least as up to date as its first, which is monotonic reads' job. With monotonic reads alone or monotonic writes alone, that history can still be explained. Together, it can't. The same goes for <em>Reply before question</em> and writes follow reads. That's why Jepsen describes PRAM as exactly read your writes, monotonic reads, and monotonic writes <em>together</em>.</p>
+
+    <h2>How this connects to the other explainers</h2>
+    <ul class="rules">
+      <li><a href="../scuttlebutt/#consistency">Scuttlebutt gossip</a> has a section placing its guarantees on this map: convergence, monotonic reads if a client sticks to one participant, read your writes for the owner, and not causal.</li>
+      <li><a href="../vector-clocks/">Vector clocks</a> track exactly the "happened before" relation that causal consistency is built on. Systems that offer causal consistency use them (or something like them) to decide when an update is safe to show.</li>
+      <li>The <a href="../add-wins-set/">add-wins set</a> offers <em>strong eventual consistency</em>: replicas that have seen the same updates hold the same state. That convergence guarantee isn't one of the boxes on this map, which is about what each read can return along the way.</li>
+    </ul>
+
+    <h2>Checking a history in practice</h2>
+    <p>Jepsen's tests run a real database under faults (partitions, crashes, clock skew), record the history of every client operation, then check whether that history is allowed by the model the database claims. Checking linearizability is expensive in general, so real checkers prune the search aggressively. Here's the core idea for a single register in Go: try to find an order that respects real time and makes every read return the latest write. It's tested against an exhaustive check on thousands of random histories.</p>
+<pre class="snippet"><code>// Op is one completed operation on a single register that starts at 0.
+type Op struct {
+	Start, End int  // when the call began and when it returned
+	Write      bool // a write of Value, or a read that returned Value
+	Value      int
+}
+
+// Linearizable reports whether the ops can be put in one order that
+// (1) respects real time: if a returned before b began, a comes first, and
+// (2) makes every read return the most recent write before it (or 0).
+// This is a brute-force search: fine for small histories. Real checkers,
+// like Jepsen's Knossos or Porcupine in Go, prune the search far harder.
+func Linearizable(ops []Op) bool {
+	placed := make([]bool, len(ops))
+	var search func(count, value int) bool
+	search = func(count, value int) bool {
+		if count == len(ops) {
+			return true
+		}
+		for i, op := range ops {
+			if placed[i] || !canGoNext(ops, placed, i) {
+				continue
+			}
+			if !op.Write &amp;&amp; op.Value != value {
+				continue // this read can't happen now: it would see the wrong value
+			}
+			next := value
+			if op.Write {
+				next = op.Value
+			}
+			placed[i] = true
+			if search(count+1, next) {
+				return true
+			}
+			placed[i] = false
+		}
+		return false
+	}
+	return search(0, 0)
+}
+
+// canGoNext reports whether op i can be next: no unplaced op returned
+// before op i began.
+func canGoNext(ops []Op, placed []bool, i int) bool {
+	for j, o := range ops {
+		if !placed[j] &amp;&amp; j != i &amp;&amp; o.End &lt; ops[i].Start {
+			return false
+		}
+	}
+	return true
+}</code></pre>
+
+    <aside class="interview" aria-label="Interview notes">
+      <h2>Interview notes</h2>
+      <p><b>How often it comes up:</b> <strong>Common in system design interviews</strong>, less so in coding rounds. Expect to justify the guarantee you pick for each part of a design.</p>
+      <p><b>Be ready to:</b></p>
+      <ul>
+        <li>Explain linearizable vs. eventually consistent with a concrete stale-read example, and say what linearizability costs (coordination on every operation, unavailability during partitions).</li>
+        <li>Pick a weaker model on purpose: a social feed can tolerate stale reads, but a user should always see their own post (read your writes).</li>
+        <li>Describe how systems provide read your writes and monotonic reads in practice: sticky sessions, reading from the leader, or tracking a version token per client.</li>
+        <li>Explain why causal consistency is often called the strongest model that stays available during partitions (it's sticky available on Jepsen's map).</li>
+      </ul>
+    </aside>
+
+    <footer>Part of <a href="../">Distributed Systems</a> in <a href="../../">Explainers</a>.</footer>
+  </main>
+
+  <script>
+  const $ = id => document.getElementById(id);
+
+  // =====================================================================
+  // Models
+  // =====================================================================
+  const MODELS = {
+    strict: {
+      name: 'Strict serializable', avail: 'unavailable', dim: true, x: 320, y: 40,
+      def: 'Operations, including multi-operation <em>transactions</em> across many keys, appear to happen one at a time, in an order consistent with real time.',
+      more: 'It joins two families: the transactional models (serializable and below) and the single-operation models on this page. For single operations it\'s the same as linearizability. Not covered further here.',
+    },
+    linearizable: {
+      name: 'Linearizable', avail: 'unavailable', x: 320, y: 112, scen: 'stale',
+      def: 'Every operation appears to take effect instantly at some moment between its call and its return. So the order of operations respects real time: if one operation finished before another started, everyone sees them in that order.',
+      forbids: 'Stale reads: once a write has finished, every read that starts afterwards must see it (or something newer).',
+      feels: 'Like a single copy of the data, even though there are many.',
+    },
+    sequential: {
+      name: 'Sequential', avail: 'unavailable', x: 320, y: 184, scen: 'disagree',
+      def: 'All operations appear in <em>some</em> single order that every process agrees on, and each process\'s own operations appear in the order it made them. Unlike linearizability, that order doesn\'t have to match real time.',
+      forbids: 'Processes disagreeing about the order of writes. Allows stale reads, as long as everyone is stale in a consistent way.',
+      feels: 'Like a single copy that some clients see with a delay.',
+    },
+    causal: {
+      name: 'Causal', avail: 'sticky', x: 320, y: 256, scen: 'reply',
+      def: 'Operations that are causally related appear in the same order to every process. Two operations are causally related if one process did both (in that order), or one read what the other wrote, or a chain of those connects them. Operations with no such link are <em>concurrent</em>, and different processes may see them in different orders.',
+      forbids: 'Seeing an effect without its cause, like a reply before the question it answers.',
+      feels: 'Like a conversation where nobody ever hears an answer before the question, though two unrelated conversations can interleave differently for different listeners.',
+    },
+    pram: {
+      name: 'PRAM', avail: 'sticky', x: 235, y: 332, scen: 'order',
+      def: 'Each process\'s writes are seen by every process in the order they were made. Writes from <em>different</em> processes can be seen in different orders. ("Pipelined RAM", Lipton and Sandberg, 1988.) Jepsen notes it\'s exactly the combination of read your writes, monotonic reads, and monotonic writes.',
+      forbids: 'Seeing one process\'s writes out of order.',
+      feels: 'Like each process sending its updates down its own first-in, first-out pipe.',
+    },
+    wfr: {
+      name: 'Writes follow reads', avail: 'total', x: 480, y: 332, scen: 'reply',
+      def: 'If a process reads a value written by w1 and then performs a write w2, then w2 is ordered after w1 for everyone. Also called session causality.',
+      forbids: 'A write overtaking the write it was based on (together with monotonic reads, this rules out the reply-before-question history).',
+      feels: 'Like "you can\'t respond to something before it exists."',
+    },
+    ryw: {
+      name: 'Read your writes', avail: 'sticky', x: 85, y: 412, scen: 'own',
+      def: 'If a process writes something and later reads, the read sees that write (or something newer).',
+      forbids: 'Losing track of your own update: posting a comment, refreshing, and not seeing it.',
+      feels: 'Like your own changes always "stick," whatever everyone else sees.',
+    },
+    mr: {
+      name: 'Monotonic reads', avail: 'total', x: 245, y: 412, scen: 'back',
+      def: 'Once a process has seen a write, its later reads can\'t see a state from before that write.',
+      forbids: 'Going back in time: seeing a value, then an older one.',
+      feels: 'Like time only moving forward for each reader.',
+    },
+    mw: {
+      name: 'Monotonic writes', avail: 'total', x: 405, y: 412, scen: 'order',
+      def: 'If a process performs one write and then another, every process sees them in that order.',
+      forbids: 'One process\'s writes being applied out of order (with monotonic reads, this rules out the out-of-order history).',
+      feels: 'Like each writer\'s updates arriving in the order they were sent.',
+    },
+  };
+  const EDGES = [['strict', 'linearizable'], ['linearizable', 'sequential'], ['sequential', 'causal'], ['causal', 'pram'], ['causal', 'wfr'], ['pram', 'ryw'], ['pram', 'mr'], ['pram', 'mw']];
+  const AVAIL = {
+    unavailable: { label: 'Unavailable', color: '--unavail', text: 'During a partition, some or all servers must refuse or wait.' },
+    sticky: { label: 'Sticky available', color: '--s4', text: 'Servers can keep answering during a partition, as long as each client keeps talking to the same server.' },
+    total: { label: 'Totally available', color: '--s3', text: 'Every server that\'s up can keep answering, even when cut off from the rest.' },
+  };
+  const BW = 152, BH = 44;
+  let selected = 'linearizable';
+
+  function drawMap() {
+    const svg = $('map');
+    svg.setAttribute('viewBox', '0 0 640 450');
+    let s = '<defs><marker id="arr" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" style="fill:var(--muted)"/></marker></defs>';
+    for (const [a, b] of EDGES) {
+      const A = MODELS[a], B = MODELS[b];
+      s += `<path class="edge" d="M${A.x} ${A.y + BH / 2} L${B.x} ${B.y - BH / 2 - 3}" marker-end="url(#arr)"/>`;
+    }
+    for (const [id, m] of Object.entries(MODELS)) {
+      const c = AVAIL[m.avail].color;
+      s += `<g class="box${m.dim ? ' dim' : ''}${id === selected ? ' sel' : ''}" data-model="${id}" tabindex="0" role="button" aria-label="${m.name}, ${AVAIL[m.avail].label}">
+        <rect x="${m.x - BW / 2}" y="${m.y - BH / 2}" width="${BW}" height="${BH}" rx="10" style="stroke:var(${c})"/>
+        <text class="name" x="${m.x}" y="${m.y - 3}">${m.name}</text>
+        <text class="avail" x="${m.x}" y="${m.y + 13}">${AVAIL[m.avail].label.replace(' available', '')}</text></g>`;
+    }
+    svg.innerHTML = s;
+  }
+  function renderInfo() {
+    const m = MODELS[selected], a = AVAIL[m.avail];
+    const stronger = EDGES.filter(([, b]) => b === selected).map(([x]) => MODELS[x].name);
+    const weaker = EDGES.filter(([x]) => x === selected).map(([, b]) => MODELS[b].name);
+    $('info').innerHTML = `<h2>${m.name}</h2>
+      <span class="tag" style="color:var(${a.color});border-color:var(${a.color})">${a.label}</span>
+      <p>${m.def}</p>
+      ${m.more ? `<p>${m.more}</p>` : ''}
+      <dl>
+        ${m.forbids ? `<dt>Forbids</dt><dd>${m.forbids}</dd>` : ''}
+        ${m.feels ? `<dt>Feels like</dt><dd>${m.feels}</dd>` : ''}
+        <dt>Availability</dt><dd>${a.text}</dd>
+        ${stronger.length ? `<dt>Implied by</dt><dd>${stronger.join(', ')}</dd>` : ''}
+        ${weaker.length ? `<dt>Implies</dt><dd>${weaker.join(', ')}</dd>` : ''}
+      </dl>
+      ${m.scen ? `<button id="see-it">See a history it forbids ↓</button>` : ''}`;
+    const b = $('see-it');
+    if (b) b.addEventListener('click', () => { pickScenario(m.scen); document.querySelectorAll('.wide')[1].scrollIntoView({ behavior: 'smooth', block: 'start' }); });
+  }
+  function selectModel(id) { selected = id; drawMap(); renderInfo(); }
+  $('map').addEventListener('click', e => { const g = e.target.closest('[data-model]'); if (g) selectModel(g.dataset.model); });
+  $('map').addEventListener('keydown', e => {
+    const g = e.target.closest('[data-model]');
+    if (g && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); selectModel(g.dataset.model); $('map').querySelector(`[data-model="${g.dataset.model}"]`).focus(); }
+  });
+
+  // =====================================================================
+  // Checkers (brute force; the histories are tiny)
+  // ops: { p, t0, t1, kind: 'w'|'r', key, val }. Every key starts at 0.
+  // =====================================================================
+  function findOrder(subset, before) {
+    const n = subset.length, placed = new Array(n).fill(false), seq = [], state = {};
+    const preds = subset.map(b => subset.map((a, j) => (a !== b && before(a, b) ? j : -1)).filter(j => j >= 0));
+    function go() {
+      if (seq.length === n) return true;
+      for (let k = 0; k < n; k++) {
+        if (placed[k] || preds[k].some(j => !placed[j])) continue;
+        const o = subset[k];
+        if (o.kind === 'r' && (state[o.key] ?? 0) !== o.val) continue;
+        const old = state[o.key];
+        if (o.kind === 'w') state[o.key] = o.val;
+        placed[k] = true; seq.push(o);
+        if (go()) return true;
+        placed[k] = false; seq.pop();
+        if (o.kind === 'w') { if (old === undefined) delete state[o.key]; else state[o.key] = old; }
+      }
+      return false;
+    }
+    return go() ? [...seq] : null;
+  }
+  function check(ops) {
+    ops.forEach((o, i) => { o.i = i; });
+    const procs = [...new Set(ops.map(o => o.p))];
+    const po = (a, b) => a.p === b.p && a.t0 < b.t0;
+    const src = r => ops.find(w => w.kind === 'w' && w.key === r.key && w.val === r.val) || null;
+    const n = ops.length, m = ops.map(a => ops.map(b => po(a, b) || (b.kind === 'r' && src(b) === a)));
+    for (let k = 0; k < n; k++) for (let i = 0; i < n; i++) if (m[i][k]) for (let j = 0; j < n; j++) if (m[k][j]) m[i][j] = true;
+    const causal = (a, b) => m[a.i][b.i];
+    const perProcess = before => {
+      const views = {};
+      for (const p of procs) {
+        const order = findOrder(ops.filter(o => o.kind === 'w' || o.p === p), before(p));
+        if (!order) return { ok: false, failing: p };
+        views[p] = order;
+      }
+      return { ok: true, views };
+    };
+    const lin = findOrder(ops, (a, b) => a.t1 < b.t0);
+    const seq = findOrder(ops, po);
+    return {
+      linearizable: { ok: !!lin, order: lin },
+      sequential: { ok: !!seq, order: seq },
+      causal: perProcess(() => causal),
+      pram: perProcess(p => (a, b) => po(a, b) && (a.p === p || (a.kind === 'w' && b.kind === 'w'))),
+    };
+  }
+
+  // =====================================================================
+  // Example histories
+  // =====================================================================
+  const W = (p, t0, t1, key, val) => ({ p, t0, t1, kind: 'w', key, val });
+  const R = (p, t0, t1, key, val) => ({ p, t0, t1, kind: 'r', key, val });
+  const SCENARIOS = {
+    fine: {
+      title: 'Everything lines up',
+      blurb: 'P2\'s first read overlaps P1\'s write, so it may see the old value or the new one. Everything else happens after the write finished, and sees it.',
+      ops: [W('P1', 0, 4, 'x', 1), R('P2', 1, 3, 'x', 0), R('P3', 2, 6, 'x', 1), R('P2', 5, 7, 'x', 1)],
+      hot: [], breaks: [],
+      why: {},
+    },
+    stale: {
+      title: 'A stale read',
+      blurb: 'P1\'s write finishes, and only afterwards does P2 start a read, which returns the old value.',
+      ops: [W('P1', 0, 2, 'x', 1), R('P2', 3, 5, 'x', 0)],
+      hot: [0, 1], breaks: [],
+      why: { linearizable: 'P2\'s read started after P1\'s write had already finished. Real time forces the write first, so the read had to return 1.' },
+    },
+    disagree: {
+      title: 'Observers disagree',
+      blurb: 'P1 and P2 each write x at about the same time. P3 sees 1 then 2; P4 sees 2 then 1.',
+      ops: [W('P1', 0, 1, 'x', 1), W('P2', 0, 1, 'x', 2), R('P3', 2, 3, 'x', 1), R('P3', 4, 5, 'x', 2), R('P4', 2, 3, 'x', 2), R('P4', 4, 5, 'x', 1)],
+      hot: [2, 3, 4, 5], breaks: [],
+      why: {
+        linearizable: 'Linearizability implies sequential consistency, which this history already breaks.',
+        sequential: 'P3 needs <code>w x=1</code> before <code>w x=2</code>, and P4 needs the opposite. No single order can satisfy both.',
+      },
+      okNote: { causal: 'The two writes are concurrent (neither process saw the other\'s write first), so causal consistency lets different processes see them in different orders.' },
+    },
+    reply: {
+      title: 'Reply before question',
+      blurb: 'P1 posts a question (x=1). P2 reads it, then posts a reply (y=1). P3 sees the reply, then reads the question and gets nothing.',
+      ops: [W('P1', 0, 1, 'x', 1), R('P2', 2, 3, 'x', 1), W('P2', 4, 5, 'y', 1), R('P3', 6, 7, 'y', 1), R('P3', 8, 9, 'x', 0)],
+      hot: [3, 4], breaks: ['wfr'],
+      why: {
+        linearizable: 'It\'s stronger than causal consistency, which this history breaks.',
+        sequential: 'It\'s stronger than causal consistency, which this history breaks.',
+        causal: 'The reply <code>w y=1</code> causally depends on the question <code>w x=1</code>: P2 read the question before writing the reply. P3 saw the reply, so it must not then see a state without the question.',
+        wfr: 'P2 read <code>x=1</code> and then wrote <code>y=1</code>, so <code>y=1</code> must be ordered after <code>x=1</code> for everyone. P3 sees them the other way around (given that P3\'s own reads move forward: see the note below).',
+      },
+      okNote: { pram: 'PRAM only orders writes made by the <em>same</em> process. The question and the reply came from different processes, so P3 may see them in either order.' },
+    },
+    order: {
+      title: 'Writes out of order',
+      blurb: 'P1 writes x=1, then y=1. P2 sees y=1, then reads x and gets 0.',
+      ops: [W('P1', 0, 1, 'x', 1), W('P1', 2, 3, 'y', 1), R('P2', 4, 5, 'y', 1), R('P2', 6, 7, 'x', 0)],
+      hot: [2, 3], breaks: ['mw'],
+      why: {
+        linearizable: 'It\'s stronger than PRAM, which this history breaks.',
+        sequential: 'It\'s stronger than PRAM, which this history breaks.',
+        causal: 'It\'s stronger than PRAM, which this history breaks.',
+        pram: 'P1 wrote x before y, so every process must see them in that order. P2 saw y=1 but then still saw the old x.',
+        mw: 'P1\'s two writes must be seen in the order P1 made them. P2 saw the second without the first (given that P2\'s reads move forward: see the note below).',
+      },
+    },
+    own: {
+      title: 'Lost my own write',
+      blurb: 'P1 writes x=1, then reads x and gets 0, as if its own write never happened.',
+      ops: [W('P1', 0, 2, 'x', 1), R('P1', 4, 6, 'x', 0)],
+      hot: [0, 1], breaks: ['ryw'],
+      why: {
+        linearizable: 'It\'s stronger than read your writes, which this history breaks.',
+        sequential: 'It\'s stronger than read your writes, which this history breaks.',
+        causal: 'It\'s stronger than read your writes, which this history breaks.',
+        pram: 'PRAM includes read your writes, which this history breaks.',
+        ryw: 'P1 wrote <code>x=1</code> and later read x, so the read had to see 1 (or something newer).',
+      },
+    },
+    back: {
+      title: 'Back in time',
+      blurb: 'P2 reads x=1, then reads x again and gets the older value 0.',
+      ops: [W('P1', 0, 1, 'x', 1), R('P2', 2, 4, 'x', 1), R('P2', 5, 7, 'x', 0)],
+      hot: [1, 2], breaks: ['mr'],
+      why: {
+        linearizable: 'It\'s stronger than monotonic reads, which this history breaks.',
+        sequential: 'It\'s stronger than monotonic reads, which this history breaks.',
+        causal: 'It\'s stronger than monotonic reads, which this history breaks.',
+        pram: 'PRAM includes monotonic reads, which this history breaks.',
+        mr: 'Once P2 had seen <code>x=1</code>, its later reads must not see a state from before that write.',
+      },
+    },
+  };
+  const CHECKED = ['linearizable', 'sequential', 'causal', 'pram'];
+  const SESSION = ['ryw', 'mr', 'mw', 'wfr'];
+  const opLabel = o => `${o.kind === 'w' ? 'w' : 'r'} ${o.key}${o.kind === 'w' ? '=' : '→'}${o.val}`;
+  let scen = 'stale', focus = null, results = null;
+
+  $('scen-list').innerHTML = Object.entries(SCENARIOS).map(([k, s]) => `<button data-scen="${k}">${s.title}</button>`).join('');
+  $('scen-list').addEventListener('click', e => { const b = e.target.closest('[data-scen]'); if (b) pickScenario(b.dataset.scen); });
+
+  function pickScenario(k) {
+    scen = k;
+    const s = SCENARIOS[k];
+    results = check(s.ops.map(o => ({ ...o })));
+    // Default focus: the strongest model that fails, if any.
+    const failing = [...CHECKED.filter(m => !results[m].ok), ...s.breaks];
+    focus = failing.length ? lastFailing(failing) : 'linearizable';
+    renderScenario();
+  }
+  function lastFailing(list) {
+    // The weakest failing model is the most informative: it's the real reason.
+    const rank = ['linearizable', 'sequential', 'causal', 'pram', 'wfr', 'ryw', 'mr', 'mw'];
+    return list.sort((a, b) => rank.indexOf(b) - rank.indexOf(a))[0];
+  }
+  function verdict(m) {
+    if (CHECKED.includes(m)) return results[m].ok;
+    return !SCENARIOS[scen].breaks.includes(m);
+  }
+
+  function renderScenario() {
+    const s = SCENARIOS[scen];
+    document.querySelectorAll('[data-scen]').forEach(b => b.setAttribute('aria-pressed', b.dataset.scen === scen));
+    // Timeline
+    const procs = [...new Set(s.ops.map(o => o.p))].sort();
+    const tmax = Math.max(...s.ops.map(o => o.t1)) + 1;
+    const W0 = 70, W1 = 640, LANE = 58, TOP = 24;
+    const X = t => W0 + (t / tmax) * (W1 - W0 - 10);
+    const H = TOP + procs.length * LANE + 40;
+    let out = `<defs><marker id="tarr" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" style="fill:var(--muted)"/></marker></defs>`;
+    procs.forEach((p, i) => {
+      const y = TOP + i * LANE + LANE / 2;
+      out += `<line class="lane" x1="${W0}" x2="${W1 - 10}" y1="${y}" y2="${y}"/><text class="pname" x="20" y="${y}">${p}</text>`;
+    });
+    s.ops.forEach((o, k) => {
+      const y = TOP + procs.indexOf(o.p) * LANE + LANE / 2;
+      const x0 = X(o.t0), x1 = X(o.t1);
+      out += `<g class="op ${o.kind}${s.hot.includes(k) ? ' hot' : ''}"><rect x="${x0}" y="${y - 15}" width="${Math.max(x1 - x0, 58)}" height="30" rx="7"/><text x="${x0 + Math.max(x1 - x0, 58) / 2}" y="${y}">${opLabel(o)}</text></g>`;
+    });
+    const ay = TOP + procs.length * LANE + 16;
+    out += `<line class="axis" x1="${W0}" x2="${W1 - 14}" y1="${ay}" y2="${ay}" marker-end="url(#tarr)"/><text class="axis-label" x="${W0}" y="${ay + 18}">real time →</text>`;
+    const svg = $('hist');
+    svg.setAttribute('viewBox', `0 0 ${W1} ${H}`);
+    svg.innerHTML = out;
+    $('scen-blurb').textContent = s.blurb;
+
+    // Verdicts
+    const row = m => {
+      const ok = verdict(m);
+      return `<li class="${ok ? 'ok' : 'bad'}"><button data-model="${m}" aria-pressed="${m === focus}"><span class="mark" aria-hidden="true">${ok ? '✓' : '✗'}</span><span>${MODELS[m].name}<span class="sr-only">: ${ok ? 'allowed' : 'not allowed'}</span></span><span class="kind">${CHECKED.includes(m) ? 'checked' : ''}</span></button></li>`;
+    };
+    $('verdicts').innerHTML = row('linearizable') + row('sequential') + row('causal') + row('pram') +
+      '<li class="sep">Session guarantees</li>' + SESSION.map(row).join('');
+    renderWhy();
+  }
+
+  const fmtOrder = order => order.map(o => `${opLabel(o)} <span style="color:var(--muted)">(${o.p})</span>`).join(' → ');
+  function renderWhy() {
+    const s = SCENARIOS[scen], m = focus, ok = verdict(m), name = MODELS[m].name;
+    let html = `<h3>${name}: ${ok ? 'allowed' : 'not allowed'}</h3>`;
+    if (!ok) html += `<p>${s.why[m] || ''}</p>`;
+    else if (m === 'linearizable' || m === 'sequential') {
+      html += `<p>${m === 'linearizable' ? 'One order that respects real time and explains every read:' : 'One order that keeps each process\'s operations in sequence and explains every read:'}</p><div class="order">${fmtOrder(results[m].order)}</div>`;
+      if (m === 'sequential' && !results.linearizable.ok) html += `<p class="note" style="margin-top:8px">This order ignores real time, which is exactly the freedom sequential consistency has and linearizability doesn't.</p>`;
+    } else if (m === 'causal' || m === 'pram') {
+      if (s.okNote && s.okNote[m]) html += `<p>${s.okNote[m]}</p>`;
+      html += `<p>Each process can explain what it saw with its own order of all the writes plus its own operations${m === 'causal' ? ', respecting every cause-and-effect link' : ', respecting each process\'s write order'}:</p>`;
+      html += `<div class="order">${Object.entries(results[m].views).map(([p, order]) => `<b>${p}:</b> ${fmtOrder(order)}`).join('<br>')}</div>`;
+    } else {
+      html += `<p>Nothing in this history breaks ${name.toLowerCase()}.</p>`;
+    }
+    $('why').innerHTML = html;
+  }
+  $('verdicts').addEventListener('click', e => { const b = e.target.closest('[data-model]'); if (b) { focus = b.dataset.model; renderScenario(); } });
+
+  drawMap(); renderInfo();
+  pickScenario('stale');
+  </script>
+</body>
+</html>

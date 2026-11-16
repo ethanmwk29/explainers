@@ -5,6 +5,11 @@
     "blurb": "How independent machines share data, disagree, and still end up consistent.",
     "explainers": [
       {
+        "slug": "consistency-models",
+        "title": "Consistency models",
+        "blurb": "Jepsen's map of consistency models, from linearizable down to the session guarantees, with example histories checked against each."
+      },
+      {
         "slug": "add-wins-set",
         "title": "The add-wins set",
         "blurb": "How a CRDT lets two offline replicas edit the same set and still agree, and why adds beat removes."
