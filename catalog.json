@@ -7,27 +7,38 @@
       {
         "slug": "consistency-models",
         "title": "Consistency models",
-        "blurb": "Jepsen's map of consistency models, from linearizable down to the session guarantees, with example histories checked against each."
+        "blurb": "Jepsen's map of consistency models, from linearizable down to the session guarantees, with example histories checked against each.",
+        "group": "Foundations"
       },
       {
         "slug": "add-wins-set",
         "title": "The add-wins set",
-        "blurb": "How a CRDT lets two offline replicas edit the same set and still agree, and why adds beat removes."
+        "blurb": "How a CRDT lets two offline replicas edit the same set and still agree, and why adds beat removes.",
+        "group": "Foundations"
       },
       {
         "slug": "scuttlebutt",
         "title": "Scuttlebutt gossip",
-        "blurb": "How gossip protocols reconcile state efficiently under limited bandwidth, and how flow control keeps them from falling behind."
+        "blurb": "How gossip protocols reconcile state efficiently under limited bandwidth, and how flow control keeps them from falling behind.",
+        "group": "Foundations"
       },
       {
         "slug": "vector-clocks",
         "title": "Vector clocks",
-        "blurb": "How to tell which events could have influenced which without a shared clock, and why one counter per process is enough to detect concurrency."
+        "blurb": "How to tell which events could have influenced which without a shared clock, and why one counter per process is enough to detect concurrency.",
+        "group": "Foundations"
       },
       {
         "slug": "replicated-dags",
         "title": "Replicated DAGs",
-        "blurb": "Why no CRDT can keep a leaderless replicated graph acyclic, and the four ways systems cope, in a two-replica partition sandbox."
+        "blurb": "Why no CRDT can keep a leaderless replicated graph acyclic, and the four ways systems cope, in a two-replica partition sandbox.",
+        "group": "Distributed graphs"
+      },
+      {
+        "slug": "graph-extensions",
+        "title": "Graph extensions",
+        "blurb": "A base graph and extensions built on it, each replicated as one versioned unit: orphans, missing anchors, lost updates, and four ways to handle them.",
+        "group": "Distributed graphs"
       }
     ]
   },

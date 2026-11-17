@@ -1,0 +1,832 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Graph Extensions</title>
+  <meta name="description" content="A base graph and extensions built on it, each replicated as one versioned unit: what breaks when they change concurrently, and four ways to handle it, with a partition sandbox.">
+  <link rel="stylesheet" href="../../style.css?v=6">
+  <script src="../../theme.js"></script>
+  <style>
+    :root { --g1: #2a78d6; --g2: #eb6834; --g3: #1baf7a; --g4: #c98500; --g5: #8a5cd6; --g6: #d6457f; }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) { --g1: #5b9bef; --g2: #ef7f50; --g3: #2ec48c; --g4: #e0a628; --g5: #a586f0; --g6: #ea6d9c; }
+    }
+    :root[data-theme="dark"] { --g1: #5b9bef; --g2: #ef7f50; --g3: #2ec48c; --g4: #e0a628; --g5: #a586f0; --g6: #ea6d9c; }
+
+    .wide { width: min(1100px, calc(100vw - 32px)); margin: 1.6em 0 2.2em; position: relative; left: 50%; transform: translateX(-50%); }
+    .panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; min-width: 0; }
+    .panel h3 { font-size: 0.75rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 10px; font-weight: 600; }
+    .rules { padding-left: 1.2em; }
+    .rules li { margin-bottom: 0.5em; }
+    main h3 { margin: 1.8em 0 0.4em; font-size: 1.15rem; }
+    table.cmp { border-collapse: collapse; width: 100%; font-size: 0.93rem; margin: 0.6em 0 1.2em; }
+    .cmp th, .cmp td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+    .cmp thead th { color: var(--muted); font-weight: 600; font-size: 0.82rem; }
+    .cmp td.y { color: var(--ok); font-weight: 700; }
+    .cmp td.n { color: var(--warn); font-weight: 700; }
+    .table-wrap { overflow-x: auto; }
+    pre.snippet { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.5; }
+    pre.snippet code { background: none; padding: 0; }
+    .cite { font-size: 0.92rem; color: var(--muted); }
+
+    /* ---------- Sandbox ---------- */
+    .bar { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; margin-bottom: 10px; }
+    .bar .lbl { font-size: 0.75rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; min-width: 4.5em; }
+    .seg { display: flex; flex-wrap: wrap; gap: 6px; }
+    .seg button { font-size: 0.88rem; padding: 0.35em 0.8em; }
+    .seg button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+    .strat-desc { margin: 0 0 14px; font-size: 0.95rem; }
+    .replicas { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 14px; align-items: start; }
+    .replicas > * { min-width: 0; }
+    @media (max-width: 860px) {
+      .replicas { grid-template-columns: minmax(0, 1fr); }
+      .network { flex-direction: row !important; flex-wrap: wrap; justify-content: center; align-items: center !important; padding-top: 0 !important; }
+    }
+    .replica { border-top: 4px solid var(--rc); }
+    #rep1 { --rc: var(--a); }
+    #rep2 { --rc: var(--b); }
+    .rep-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+    .rep-head h4 { margin: 0; color: var(--rc); font-size: 1.05rem; }
+    .badge { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; padding: 1px 8px; border-radius: 999px; border: 1.5px solid var(--muted); color: var(--muted); }
+    .g-wrap { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; overflow-x: auto; }
+    svg.g { display: block; width: 100%; height: auto; }
+    .g text { font-family: var(--sans); pointer-events: none; }
+    .g .v { cursor: pointer; }
+    .g .v:focus { outline: none; }
+    .g .v circle.node { fill: color-mix(in srgb, var(--gc) 18%, var(--surface)); stroke: var(--gc); stroke-width: 2.5; }
+    .g .v:hover circle.node, .g .v:focus-visible circle.node { stroke-width: 4; }
+    .g .v circle.ring { fill: none; stroke: var(--rc); stroke-width: 3; }
+    .g .v text.name { font-size: 15px; font-weight: 700; text-anchor: middle; dominant-baseline: central; fill: var(--text); }
+    .g .v.ghost { cursor: default; }
+    .g .v.ghost circle.node { stroke-dasharray: 4 3; fill: var(--surface); opacity: 0.75; }
+    .g .v.ghost text.name { fill: var(--muted); }
+    .g text.gid { font-size: 11px; font-weight: 700; fill: var(--gc); paint-order: stroke; stroke: var(--bg); stroke-width: 4px; }
+    .g .e line { stroke: var(--muted); stroke-width: 2; }
+    .g .e polygon { fill: var(--muted); }
+    .g .e.ghost line { stroke-dasharray: 5 4; opacity: 0.6; }
+    .g .e.ghost polygon { opacity: 0.6; }
+    .g .v.fresh circle.node { animation: flash 1.8s ease-out; }
+    @keyframes flash { 0%, 35% { stroke: var(--fresh); stroke-width: 7; } }
+    .g .empty { font-size: 13px; fill: var(--muted); font-style: italic; text-anchor: middle; }
+    .actions { min-height: 2.4em; margin: 8px 0 4px; font-size: 0.88rem; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+    .actions .hint { color: var(--muted); }
+    .actions button { font-size: 0.85rem; padding: 0.3em 0.7em; }
+    .glist { list-style: none; margin: 8px 0 0; padding: 0; font-size: 0.86rem; }
+    .glist li { display: flex; align-items: center; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+    .glist li:last-child { border-bottom: none; }
+    .glist .sw { width: 11px; height: 11px; border-radius: 3px; background: var(--gc); flex: none; }
+    .glist .gname { font-weight: 700; min-width: 2.6em; }
+    .glist .ver { font-family: var(--mono); font-size: 0.78rem; color: var(--muted); }
+    .glist .st { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+    .glist .st.shown { color: var(--ok); }
+    .glist .st.dormant, .glist .st.kept { color: var(--g4); }
+    .glist .st.deleted { color: var(--muted); }
+    .glist .why { color: var(--muted); font-size: 0.8rem; }
+    .glist button { margin-left: auto; font-size: 0.78rem; padding: 0.15em 0.6em; }
+    .network { display: flex; flex-direction: column; gap: 8px; align-items: stretch; padding-top: 70px; }
+    .network button { white-space: nowrap; min-width: 150px; }
+    .status { white-space: nowrap; font-size: 0.8rem; text-align: center; padding: 4px 10px; border-radius: 999px; font-weight: 700; }
+    .status.on { color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, transparent); }
+    .status.off { color: var(--warn); background: color-mix(in srgb, var(--warn) 12%, transparent); }
+    .below { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 14px; margin-top: 14px; }
+    @media (max-width: 860px) { .below { grid-template-columns: minmax(0, 1fr); } }
+    .verdict p { margin: 0 0 8px; }
+    .verdict ul { margin: 0 0 8px; padding-left: 1.2em; }
+    .verdict li { margin-bottom: 4px; }
+    .verdict .big { font-size: 1.05rem; font-weight: 700; }
+    .verdict .ok { color: var(--ok); }
+    .verdict .bad { color: var(--warn); }
+    .log { list-style: none; margin: 0; padding: 0; font-size: 0.85rem; max-height: 260px; overflow-y: auto; }
+    .log li { padding: 4px 0; border-bottom: 1px solid var(--border); }
+    .log li:last-child { border-bottom: none; }
+    .log .who { font-weight: 700; }
+    .log .who.r1 { color: var(--a); }
+    .log .who.r2 { color: var(--b); }
+    .log .no { color: var(--warn); font-weight: 600; }
+  </style>
+</head>
+<body>
+  <main>
+    <nav class="crumbs"><a href="../../">Explainers</a><span>/</span><a href="../">Distributed Systems</a></nav>
+    <h1>Graph extensions</h1>
+    <p class="lede">A base graph, plus extensions that other people build on top of it, each replicated as one versioned unit. Every unit merges cleanly on its own. What breaks are the references between them.</p>
+
+    <h2>The setup</h2>
+    <p>Two kinds of things are replicated, with no leader:</p>
+    <ul class="rules">
+      <li><strong>The base</strong>: a graph, such as <code>A → B</code>.</li>
+      <li><strong>Extensions</strong>: graphs that hang off a vertex in another graph, their <strong>anchor</strong>. An extension anchored at B might add <code>C</code> and <code>D</code> with <code>B → C → D</code>. Extensions can anchor on other extensions too, so they form chains.</li>
+    </ul>
+    <p>Each graph is replicated <strong>atomically</strong>: every write replaces the whole graph, never a single row. So a merge can never leave half of an update applied, and each graph is always internally consistent. Plugins on a platform, layers on a map, packages that depend on packages, and overlays on a base configuration all have this shape.</p>
+
+    <h3>Which version wins</h3>
+    <p>Every write to a graph (creating, updating, deleting, or restoring it) gets the next version number after the one the writer had. When two replicas hold different copies of the same graph, the merge keeps one:</p>
+    <ol class="rules">
+      <li>The <strong>higher version wins</strong>.</li>
+      <li>At the <strong>same version</strong>, the <strong>later write wins</strong> (last writer wins).</li>
+    </ol>
+    <p>Choosing a winner by a fixed order like this is a CRDT: the merge is commutative, associative, and idempotent, so all replicas converge however they sync. A few consequences are worth knowing:</p>
+    <ul class="rules">
+      <li><strong>Stale writes lose.</strong> If one replica writes versions 1, 2 and 3, and another replica that only saw the original later writes its own version 1, version 3 still wins. That's usually what you want: the late writer was working from old data.</li>
+      <li><strong>More edits beat newer edits.</strong> The version counts edits along a line of history, not time. A replica that makes three edits offline (version 4) beats a single edit made later somewhere else (version 2). That one edit is lost.</li>
+      <li><strong>Concurrent edits at the same version lose a whole graph.</strong> Atomic replacement means last writer wins drops the other writer's entire update, not just the conflicting part.</li>
+      <li><strong>Deletes must be versioned too.</strong> A delete is a write of a <em>tombstone</em> at the next version. If it simply removed the graph, a replica that never heard about the delete would send the old graph back during the next sync. Tombstones keep the graph's content, so it can be restored (with yet another version).</li>
+    </ul>
+
+    <h2>What can go wrong</h2>
+    <p>Each graph is valid on its own, so every violation is about a <em>reference</em>: an extension's anchor pointing into another graph. These are all cases where each replica's change was fine locally, and the merge isn't:</p>
+    <div class="table-wrap">
+      <table class="cmp">
+        <thead><tr><th>Problem</th><th>Replica 1</th><th>Replica 2, at the same time</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Orphaned extension</strong></td><td>Deletes the base</td><td>Creates an extension anchored on the base</td></tr>
+          <tr><td><strong>Missing anchor</strong></td><td>Updates the base, removing vertex B</td><td>Creates an extension anchored at B</td></tr>
+          <tr><td><strong>Broken chain</strong></td><td>Deletes extension E1</td><td>Creates an extension anchored on E1</td></tr>
+          <tr><td><strong>Lost update strands an extension</strong></td><td>Updates the base</td><td>Updates the base too, adds vertex C, and anchors an extension at C. Same version, and replica 1 wrote later, so C disappears</td></tr>
+          <tr><td><strong>Cycle across graphs</strong></td><td>Updates the base to add <code>C → A</code></td><td>Creates an extension <code>A → X → C</code></td></tr>
+          <tr><td><strong>Name collision</strong></td><td>An extension adds vertex <code>cache</code></td><td>Another extension adds a different <code>cache</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>The first four are <strong>referential integrity</strong>: "every anchor points at something that exists". That rule is safe while things are only added, and unsafe once things can be deleted. They're the focus of the sandbox. The cycle is the <a href="../replicated-dags/">replicated DAGs</a> problem again, one level up: the same four strategies apply, with whole graphs in place of single edges. Name collisions are the easiest to remove: qualify every vertex name by its graph (<code>E1/cache</code>), and uniqueness becomes a property of each graph alone, which survives merging. (The sandbox simply hands out unique letters.)</p>
+
+    <h2>Partition sandbox</h2>
+    <p>Both replicas start with the base <code>A → B</code>. Click a vertex to act on it: extend from it (a new graph anchored there), add a vertex after it in the same graph, remove it, or delete its graph. The list under each replica shows every graph it stores, with its version, who wrote it, and the time of the write. Cut the network, change things on both sides, then heal it, or try a scenario.</p>
+  </main>
+
+  <section class="wide" aria-label="Partition sandbox">
+    <div class="panel">
+      <div class="bar">
+        <span class="lbl" id="strat-lbl">Strategy</span>
+        <div class="seg" id="strats" role="group" aria-labelledby="strat-lbl"></div>
+      </div>
+      <p class="strat-desc" id="strat-desc"></p>
+      <div class="bar">
+        <span class="lbl" id="scen-lbl">Try</span>
+        <div class="seg" id="scens" role="group" aria-labelledby="scen-lbl"></div>
+      </div>
+
+      <div class="replicas">
+        <div class="panel replica" id="rep1"></div>
+        <div class="network">
+          <div class="status on" id="net-status">Connected</div>
+          <button id="net-btn">Cut the network</button>
+        </div>
+        <div class="panel replica" id="rep2"></div>
+      </div>
+
+      <div class="below">
+        <div class="panel verdict" id="verdict" aria-live="polite"></div>
+        <div class="panel">
+          <h3>Log</h3>
+          <ul class="log" id="log"></ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <main style="padding-top: 0">
+    <h2>The strategies</h2>
+    <p>SQL foreign keys face the same question when the row being referenced is deleted, and offer <code>ON DELETE CASCADE</code>, <code>RESTRICT</code>, and <code>SET NULL</code>. Without a leader, the twist is that the replica doing the delete can only act on the dependents it knows about.</p>
+
+    <h3>Dormant (resolve when reading)</h3>
+    <p>Deleting a graph deletes only that graph. An extension whose anchor can't be found (its parent is deleted, or the vertex is gone, or the parent is itself dormant) is <strong>dormant</strong>: still stored and still replicated, but not shown. If the anchor comes back (someone restores the base, or a later version brings the vertex back), the extension reappears. Every replica with the same graphs computes the same view, so they agree on what's shown.</p>
+    <p><strong>What you give up:</strong> a delete leaves its dependents behind as hidden clutter. Something has to show "these extensions are waiting on a missing anchor" so someone can re-anchor or delete them, and storage keeps them until then.</p>
+
+    <h3>Cascade (remove wins)</h3>
+    <p>Deleting a graph or removing a vertex also deletes everything hanging off it. On the replica doing the delete, that covers the dependents it knows about. A concurrent extension it never saw arrives later as an orphan, so the cascade has to run again after merges: any replica that finds an extension without its anchor deletes it.</p>
+    <p><strong>What you give up:</strong> work nobody chose to delete. An extension created during the partition is deleted by a decision made by someone who didn't know it existed. Restoring the base doesn't bring the cascaded extensions back. They're separate tombstones, and each must be restored by hand, parent first: restoring an extension whose anchor is still missing would just orphan it again, so the sandbox refuses.</p>
+
+    <h3>Keep what's referenced (add wins)</h3>
+    <p>This is the <a href="../add-wins-set/">add-wins set</a>'s rule applied to references: a delete removes only what the deleter had seen. Deleting a graph also deletes the dependents you can see. A dependent you couldn't see keeps its anchor alive: the deleted graph (or removed vertex) stays visible for it, drawn dashed.</p>
+    <p><strong>What you give up:</strong> deletes don't always take effect. The person who deleted the base sees it come back after the merge, and the base's content has to be kept (in its tombstone) for as long as anything depends on it.</p>
+
+    <h3>Coordinate (restrict)</h3>
+    <p>One leader handles every write, and it refuses to delete a graph or remove a vertex that some extension still hangs off: delete the extensions first. Because the leader sees every write, nothing can be orphaned. npm adopted a policy like this after the 2016 left-pad incident, when an unpublished package broke thousands of builds that depended on it: a package that other packages depend on can no longer simply be unpublished.</p>
+    <p><strong>What you give up:</strong> availability. A replica cut off from the leader can't write at all, because even creating an extension must be registered with the leader, or it could be orphaned by a delete the leader approved.</p>
+
+    <h3>Not in the sandbox: pin immutable versions</h3>
+    <p>Instead of replacing a graph, keep every version forever, and have each extension anchor at a specific version (<code>base@v1 / B</code>) or a content hash. A reference to an immutable version can never dangle, so the orphan, missing-anchor and lost-update problems disappear. A "delete" becomes a deprecation that hides the graph from new extensions. Go modules, Nix, and Git all work like this. The cost moves somewhere else: when the base publishes v2, each extension still points at v1 until it is deliberately moved, which is a migration that can fail if v2 dropped its anchor.</p>
+
+    <h2>Comparing them</h2>
+    <div class="table-wrap">
+      <table class="cmp">
+        <thead><tr><th>Strategy</th><th>Writes during a partition</th><th>Unseen extensions survive</th><th>Every shown extension is attached</th><th>Deletes take effect</th></tr></thead>
+        <tbody>
+          <tr><td>Dormant</td><td class="y">✓</td><td class="y">✓ stored, hidden</td><td class="y">✓</td><td class="y">✓</td></tr>
+          <tr><td>Cascade</td><td class="y">✓</td><td class="n">✗ deleted</td><td class="y">✓</td><td class="y">✓ and then some</td></tr>
+          <tr><td>Keep what's referenced</td><td class="y">✓</td><td class="y">✓ shown</td><td class="y">✓ to a kept anchor</td><td class="n">✗ not if still referenced</td></tr>
+          <tr><td>Coordinate</td><td class="n">✗ minority side waits</td><td class="y">✓ none can exist</td><td class="y">✓</td><td>only once nothing depends on it</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>Dormant is the default to reach for, for the same reason the <a href="../replicated-dags/">replicated DAGs</a> page prefers hiding to deleting: deciding what's hidden is a pure function of the stored graphs, so it can always be recomputed when more information arrives, and nothing anyone wrote is destroyed by a guess. Pair it with pinned versions if the base changes often.</p>
+
+    <h2>The model in Go</h2>
+    <p>Here are the two pieces: the version rule used to merge, and the dormant rule for what's shown. Both are tested against a brute-force version of their definitions on tens of thousands of random cases, including anchors that point at themselves or in loops.</p>
+<pre class="snippet"><code>// Graph is one replicated, versioned graph: the base or an extension.
+// Every write (an update, a delete, a restore) replaces the whole graph.
+type Graph struct {
+	ID       string
+	Version  int
+	Time     int64 // when it was written; breaks ties within a version
+	Replica  int   // last-resort tie-breaker
+	Deleted  bool  // a tombstone: deletes are versioned writes too
+	Vertices []string
+	// The vertex this graph hangs off, in another graph.
+	// Empty for the base.
+	AnchorGraph, AnchorVertex string
+}
+
+// Beats reports whether a wins over b: the higher version wins, and
+// within the same version, the later write wins.
+func Beats(a, b Graph) bool {
+	if a.Version != b.Version {
+		return a.Version &gt; b.Version
+	}
+	if a.Time != b.Time {
+		return a.Time &gt; b.Time
+	}
+	return a.Replica &gt; b.Replica
+}
+
+// Merge combines two replicas' states graph by graph. Picking a winner
+// by a fixed order is commutative, associative, and idempotent, so all
+// replicas converge no matter how often or in what order they sync.
+func Merge(x, y map[string]Graph) map[string]Graph {
+	out := make(map[string]Graph, len(x))
+	for id, g := range x {
+		out[id] = g
+	}
+	for id, g := range y {
+		if cur, ok := out[id]; !ok || Beats(g, cur) {
+			out[id] = g
+		}
+	}
+	return out
+}
+
+// Visible reports which graphs to show. A graph is shown if it isn't
+// deleted and its anchor vertex is in a graph that is itself shown.
+// Every other graph is dormant: still stored, but hidden until its
+// anchor comes back.
+func Visible(graphs map[string]Graph) map[string]bool {
+	const (
+		unknown = iota
+		visiting
+		yes
+		no
+	)
+	state := map[string]int{}
+	var visit func(id string) bool
+	visit = func(id string) bool {
+		switch state[id] {
+		case yes:
+			return true
+		case no, visiting: // visiting: an anchor loop can't be grounded
+			return false
+		}
+		state[id] = visiting
+		g, ok := graphs[id]
+		show := ok &amp;&amp; !g.Deleted
+		if show &amp;&amp; g.AnchorGraph != "" {
+			show = visit(g.AnchorGraph) &amp;&amp;
+				slices.Contains(graphs[g.AnchorGraph].Vertices, g.AnchorVertex)
+		}
+		state[id] = no
+		if show {
+			state[id] = yes
+		}
+		return show
+	}
+	out := map[string]bool{}
+	for id := range graphs {
+		if visit(id) {
+			out[id] = true
+		}
+	}
+	return out
+}</code></pre>
+
+    <h2>How this connects to the other explainers</h2>
+    <ul class="rules">
+      <li><a href="../replicated-dags/">Replicated DAGs</a> covers invariant confluence, the test for which rules can survive a merge. "Every anchor exists" passes while things are only added, and fails once they can be deleted.</li>
+      <li>The <a href="../add-wins-set/">add-wins set</a> is the "keep what's referenced" rule in its simplest form: a remove only removes what the remover saw.</li>
+      <li><a href="../vector-clocks/">Vector clocks</a> are the precise tool for what the version number approximates: telling a write that saw another apart from one that's concurrent with it. With a vector clock per graph, you could keep both concurrent versions (as siblings) instead of dropping one.</li>
+      <li><a href="../consistency-models/">Consistency models</a>: the coordinate strategy is what an "unavailable" model costs.</li>
+    </ul>
+
+    <aside class="interview" aria-label="Interview notes">
+      <h2>Interview notes</h2>
+      <p><b>How often it comes up:</b> <strong>Occasionally in system design interviews</strong>, usually disguised: "a user deletes a folder while someone else uploads a file into it", "a service deletes a record other services reference", or "design a plugin marketplace".</p>
+      <p><b>Be ready to:</b></p>
+      <ul>
+        <li>Name the options for a deleted parent (cascade, restrict, hide the children, keep the parent alive) and say which ones need coordination.</li>
+        <li>Explain why a cascade can't reach dependents the deleting replica hasn't seen, and what you do when they show up later.</li>
+        <li>Explain tombstones: why a delete has to be a versioned write, and when a tombstone can finally be dropped (once every replica has seen it).</li>
+        <li>Discuss version numbers versus timestamps for last writer wins, including the "three offline edits beat one newer edit" behavior.</li>
+        <li>Suggest immutable, versioned references (like package versions or content hashes) to make dangling references impossible.</li>
+      </ul>
+    </aside>
+
+    <footer>Part of <a href="../">Distributed Systems</a> in <a href="../../">Explainers</a>.</footer>
+  </main>
+
+  <script>
+  const $ = id => document.getElementById(id);
+  const SVGNS = 'http://www.w3.org/2000/svg';
+  function el(tag, attrs = {}, ...kids) {
+    const n = tag.startsWith('svg:') ? document.createElementNS(SVGNS, tag.slice(4)) : document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs)) {
+      if (v === false || v == null) continue;
+      if (k === 'text') n.textContent = v;
+      else if (k === 'html') n.innerHTML = v;
+      else if (k.startsWith('on')) n.addEventListener(k.slice(2), v);
+      else n.setAttribute(k, v);
+    }
+    for (const kid of kids.flat(Infinity)) if (kid != null && kid !== false) n.append(kid);
+    return n;
+  }
+
+  // =====================================================================
+  // State
+  // =====================================================================
+  const STRATS = {
+    dormant: { name: 'Dormant',
+      desc: '<strong>Resolve when reading.</strong> A delete removes only that graph. An extension whose anchor is missing is dormant: stored but hidden, and it reappears if the anchor comes back.' },
+    cascade: { name: 'Cascade',
+      desc: '<strong>Remove wins.</strong> Deleting a graph or removing a vertex also deletes everything this replica can see hanging off it. After a merge, any extension whose anchor is gone is deleted too, even one nobody had seen.' },
+    keep: { name: 'Keep what\'s referenced',
+      desc: '<strong>Add wins.</strong> Deleting also deletes the dependents this replica can see. A dependent it couldn\'t see keeps its anchor alive: the deleted graph or vertex stays, drawn dashed.' },
+    coord: { name: 'Coordinate',
+      desc: '<strong>Replica 1 is the leader for every write.</strong> It refuses to delete a graph or remove a vertex that an extension still hangs off. Cut off from the leader, replica 2 can\'t write at all.' },
+  };
+  const SCENARIOS = [
+    { id: 'orphan', name: 'Delete the base' },
+    { id: 'anchor', name: 'Remove the anchor' },
+    { id: 'chain', name: 'Break a chain' },
+    { id: 'lww', name: 'Same version' },
+    { id: 'edits', name: 'More edits win' },
+  ];
+  const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+
+  let strat = 'dormant';
+  let connected, clock, nextLetter, nextExt, reps, owner, from, created, selected, fresh, logItems, lost, cascadedUnseen, rejected;
+
+  function reset() {
+    connected = true;
+    clock = 0;
+    nextLetter = 2;
+    nextExt = 0;
+    owner = new Map([['A', 'base'], ['B', 'base']]);
+    from = new Map([['A', null], ['B', 'A']]);
+    created = ['A', 'B'];
+    const base = { gid: 'base', ver: 1, t: 0, r: 0, kind: 'created', deleted: false, verts: ['A', 'B'], edges: [['A', 'B']], anchor: null, hist: [0] };
+    reps = { 1: new Map([['base', base]]), 2: new Map([['base', base]]) };
+    selected = { 1: null, 2: null };
+    fresh = new Set();
+    logItems = [];
+    lost = [];
+    cascadedUnseen = [];
+    rejected = 0;
+  }
+
+  const gnum = gid => gid === 'base' ? 0 : +gid.slice(1);
+  const gcolor = gid => gid === 'base' ? 'var(--text)' : `var(--g${(gnum(gid) - 1) % 6 + 1})`;
+  const gname = gid => gid === 'base' ? 'base' : gid;
+  const live = rec => rec && !rec.deleted;
+  const beats = (a, b) => a.ver !== b.ver ? a.ver > b.ver : a.t !== b.t ? a.t > b.t : a.r > b.r;
+  const writer = rec => rec.r ? `R${rec.r}` : 'initial';
+  const verText = rec => `v${rec.ver} · ${writer(rec)} · t${rec.t}`;
+  const sortGids = gids => [...gids].sort((a, b) => gnum(a) - gnum(b));
+
+  // =====================================================================
+  // What a replica shows
+  // =====================================================================
+  // Returns { show: Map gid -> 'live' | 'kept', dormant: Map gid -> reason,
+  //           keptVerts: Set of vertices kept only because something hangs off them }.
+  function analyze(rid) {
+    const recs = reps[rid];
+    const state = new Map();
+    const reason = new Map();
+    function visible(gid) {
+      const s = state.get(gid);
+      if (s === 'yes') return true;
+      if (s === 'no' || s === 'visiting') return false;
+      state.set(gid, 'visiting');
+      const rec = recs.get(gid);
+      let ok = live(rec);
+      if (ok && rec.anchor) {
+        const p = owner.get(rec.anchor), pr = recs.get(p);
+        if (!live(pr)) { ok = false; reason.set(gid, `${gname(p)} is deleted`); }
+        else if (!visible(p)) { ok = false; reason.set(gid, `${gname(p)} is hidden`); }
+        else if (!pr.verts.includes(rec.anchor)) { ok = false; reason.set(gid, `${rec.anchor} is gone from ${gname(p)}`); }
+      }
+      state.set(gid, ok ? 'yes' : 'no');
+      return ok;
+    }
+    const show = new Map(), dormant = new Map(), keptVerts = new Set();
+    for (const gid of recs.keys()) {
+      if (visible(gid)) show.set(gid, 'live');
+      else if (live(recs.get(gid))) dormant.set(gid, reason.get(gid));
+    }
+    if (strat === 'keep') {
+      // Every stored graph is shown; anything a shown graph hangs off is kept.
+      const queue = [...dormant.keys()];
+      for (const gid of queue) show.set(gid, 'live');
+      dormant.clear();
+      while (queue.length) {
+        const rec = recs.get(queue.shift());
+        if (!rec.anchor) continue;
+        const p = owner.get(rec.anchor), pr = recs.get(p);
+        if (pr && pr.verts.includes(rec.anchor)) {
+          if (!show.has(p)) { show.set(p, 'kept'); queue.push(p); }
+        } else keptVerts.add(rec.anchor);
+      }
+    }
+    return { show, dormant, keptVerts };
+  }
+
+  // Live graphs on this replica whose anchor can't be found.
+  const broken = rid => new Set(analyze0(rid).dormant.keys());
+  function analyze0(rid) { const s = strat; strat = 'dormant'; try { return analyze(rid); } finally { strat = s; } }
+
+  // =====================================================================
+  // Writes
+  // =====================================================================
+  function logit(rid, html, bad = false) {
+    logItems.unshift({ rid, html, bad });
+    if (logItems.length > 60) logItems.pop();
+  }
+  const who = rid => rid ? `<span class="who r${rid}">Replica ${rid}</span> ` : '';
+
+  function write(rid, gid, change, kind) {
+    const cur = reps[rid].get(gid);
+    const t = ++clock;
+    const rec = { ...(cur || {}), ...change, gid, kind, ver: cur ? cur.ver + 1 : 1, t, r: rid, hist: [...(cur ? cur.hist : []), t] };
+    reps[rid].set(gid, rec);
+    return rec;
+  }
+
+  function refuse(rid, what, why) {
+    rejected++;
+    logit(rid, `<span class="no">couldn't ${what}:</span> ${why}`, true);
+    render();
+    return false;
+  }
+
+  // Coordinate: the leader's checks. Returns a reason to refuse, or null.
+  function leaderRefuses(rid, dependentsOf) {
+    if (strat !== 'coord') return null;
+    if (rid === 2 && !connected) return 'it can\'t reach the leader (replica 1). Every write waits until the partition heals.';
+    if (!dependentsOf) return null;
+    const recs = reps[1];
+    const deps = sortGids([...recs.values()].filter(r => live(r) && r.anchor && dependentsOf(r.anchor)).map(r => r.gid));
+    return deps.length ? `the leader refuses, because ${deps.join(' and ')} ${deps.length > 1 ? 'hang' : 'hangs'} off it. Delete ${deps.length > 1 ? 'them' : 'it'} first.` : null;
+  }
+
+  function newVertex(parent, gid) {
+    if (nextLetter >= LETTERS.length) return null;
+    const v = LETTERS[nextLetter++];
+    owner.set(v, gid);
+    from.set(v, parent);
+    created.push(v);
+    fresh.add(v);
+    return v;
+  }
+
+  // After a delete or a removal: under cascade and keep, also delete the
+  // dependents this replica can see (the ones that just lost their anchor).
+  function deleteKnownDependents(rid, before) {
+    if (strat !== 'cascade' && strat !== 'keep') return;
+    const gone = [];
+    for (;;) {
+      const now = [...broken(rid)].filter(g => !before.has(g));
+      if (!now.length) break;
+      for (const g of now) { write(rid, g, { deleted: true }, 'deleted'); gone.push(g); }
+    }
+    if (gone.length) logit(rid, `also deleted ${sortGids(gone).join(', ')}, which hung off it.`);
+  }
+
+  function extend(rid, x) {
+    const why = leaderRefuses(rid);
+    if (why) return refuse(rid, `extend from ${x}`, why);
+    const gid = 'E' + (++nextExt);
+    const y = newVertex(x, gid);
+    if (!y) return refuse(rid, 'add a vertex', 'out of letters. Reset to start over.');
+    const rec = write(rid, gid, { deleted: false, verts: [y], edges: [[x, y]], anchor: x }, 'created');
+    logit(rid, `created extension ${gid} anchored at ${x}, adding ${x} → ${y} <span class="mono">(${verText(rec)})</span>.`);
+    after(rid);
+  }
+
+  function addVertex(rid, x) {
+    const gid = owner.get(x);
+    const why = leaderRefuses(rid);
+    if (why) return refuse(rid, `add a vertex to ${gname(gid)}`, why);
+    const cur = reps[rid].get(gid);
+    const y = newVertex(x, gid);
+    if (!y) return refuse(rid, 'add a vertex', 'out of letters. Reset to start over.');
+    const rec = write(rid, gid, { verts: [...cur.verts, y], edges: [...cur.edges, [x, y]] }, 'updated');
+    logit(rid, `updated ${gname(gid)}, adding ${x} → ${y} <span class="mono">(${verText(rec)})</span>.`);
+    after(rid);
+  }
+
+  function removeVertex(rid, x) {
+    const gid = owner.get(x);
+    const why = leaderRefuses(rid, a => a === x);
+    if (why) return refuse(rid, `remove ${x}`, why);
+    const cur = reps[rid].get(gid);
+    const before = broken(rid);
+    const rec = write(rid, gid, { verts: cur.verts.filter(v => v !== x), edges: cur.edges.filter(([u, v]) => u !== x && v !== x) }, 'updated');
+    logit(rid, `updated ${gname(gid)}, removing ${x} <span class="mono">(${verText(rec)})</span>.`);
+    deleteKnownDependents(rid, before);
+    after(rid);
+  }
+
+  function deleteGraph(rid, gid) {
+    const cur = reps[rid].get(gid);
+    const why = leaderRefuses(rid, a => owner.get(a) === gid && cur.verts.includes(a));
+    if (why) return refuse(rid, `delete ${gname(gid)}`, why);
+    const before = broken(rid);
+    const rec = write(rid, gid, { deleted: true }, 'deleted');
+    logit(rid, `deleted ${gname(gid)} <span class="mono">(${verText(rec)}, a tombstone)</span>.`);
+    deleteKnownDependents(rid, before);
+    after(rid);
+  }
+
+  function restoreGraph(rid, gid) {
+    const why = leaderRefuses(rid);
+    if (why) return refuse(rid, `restore ${gname(gid)}`, why);
+    // Cascade and coordinate never leave an extension without its anchor,
+    // so they won't restore one whose anchor is still missing.
+    const a = reps[rid].get(gid).anchor;
+    if (a && (strat === 'cascade' || strat === 'coord')) {
+      const p = owner.get(a), pr = reps[rid].get(p);
+      if (!live(pr) || broken(rid).has(p) || !pr.verts.includes(a)) {
+        return refuse(rid, `restore ${gname(gid)}`, `its anchor ${a} ${live(pr) && !pr.verts.includes(a) ? `is gone from ${gname(p)}` : `is in ${gname(p)}, which isn't shown`}. Restore that first.`);
+      }
+    }
+    const rec = write(rid, gid, { deleted: false }, 'restored');
+    logit(rid, `restored ${gname(gid)} <span class="mono">(${verText(rec)})</span>.`);
+    after(rid);
+  }
+
+  function after(rid) {
+    selected[rid] = null;
+    if (connected) sync();
+    render();
+  }
+
+  // Merge graph by graph. Returns the writes that lost to a concurrent write.
+  function sync() {
+    const conflicts = [];
+    const gids = new Set([...reps[1].keys(), ...reps[2].keys()]);
+    for (const gid of gids) {
+      const a = reps[1].get(gid), b = reps[2].get(gid);
+      let w = a || b;
+      if (a && b && a.t !== b.t) {
+        w = beats(a, b) ? a : b;
+        const l = w === a ? b : a;
+        if (!w.hist.includes(l.t)) conflicts.push({ w, l });
+      }
+      reps[1].set(gid, w);
+      reps[2].set(gid, w);
+    }
+    return conflicts;
+  }
+
+  function cascadeAfterMerge() {
+    const gone = [];
+    for (;;) {
+      const now = [...broken(1)];
+      if (!now.length) break;
+      for (const g of now) {
+        const reasonText = analyze0(1).dormant.get(g);
+        write(1, g, { deleted: true }, 'deleted');
+        gone.push(`${g} (${reasonText})`);
+        cascadedUnseen.push(g);
+      }
+    }
+    if (gone.length) { sync(); logit(0, `<span class="no">The cascade deletes ${gone.join(', ')}.</span> Nobody who deleted its anchor had seen it.`, true); }
+  }
+
+  const describe = rec => `${rec.kind === 'deleted' ? 'delete' : rec.kind === 'created' ? 'creation' : rec.kind === 'restored' ? 'restore' : 'update'} of ${gname(rec.gid)}`;
+
+  function setNetwork(on) {
+    if (on === connected) return;
+    if (!on) {
+      connected = false;
+      logit(0, 'The network is cut. Changes now stay on the replica that made them.');
+      render();
+      return;
+    }
+    connected = true;
+    const conflicts = sync();
+    let msg = 'The partition heals and the replicas merge, graph by graph.';
+    if (!conflicts.length) msg += ' No graph was changed on both sides.';
+    logit(0, msg);
+    for (const { w, l } of conflicts) {
+      const rule = w.ver === l.ver
+        ? `Same version (v${w.ver}), so the later write wins`
+        : `The higher version wins${l.t > w.t ? `, even though replica ${l.r} wrote later` : ''}`;
+      logit(0, `${gname(w.gid)}: replica ${w.r}'s ${describe(w)} <span class="mono">(${verText(w)})</span> and replica ${l.r}'s ${describe(l)} <span class="mono">(${verText(l)})</span> were concurrent. ${rule}. <span class="no">Replica ${l.r}'s write is lost.</span>`, true);
+      lost.push(`replica ${l.r}'s ${describe(l)} <span class="mono">(${verText(l)})</span>`);
+    }
+    if (strat === 'cascade') cascadeAfterMerge();
+    render();
+  }
+
+  // =====================================================================
+  // Scenarios
+  // =====================================================================
+  function scenario(id) {
+    reset();
+    logit(0, `Started fresh with the <strong>${STRATS[strat].name}</strong> strategy.`);
+    if (id === 'chain') {
+      extend(1, 'B');  // E1: C
+      extend(1, 'C');  // E2: D
+      logit(0, 'Set up a chain: E1 hangs off the base at B, and E2 hangs off E1 at C.');
+    }
+    setNetwork(false);
+    if (id === 'orphan') { deleteGraph(1, 'base'); extend(2, 'B'); }
+    else if (id === 'anchor') { removeVertex(1, 'B'); extend(2, 'B'); }
+    else if (id === 'chain') { deleteGraph(1, 'E1'); extend(2, 'C'); }
+    else if (id === 'lww') { addVertex(2, 'B'); extend(2, 'C'); addVertex(1, 'A'); }
+    else if (id === 'edits') { addVertex(1, 'A'); addVertex(1, 'B'); removeVertex(1, 'D'); addVertex(2, 'B'); }
+    logit(0, 'Now heal the partition to see what happens.');
+    render();
+  }
+
+  // =====================================================================
+  // Rendering
+  // =====================================================================
+  const DX = 74, DY = 50, PADX = 36, PADY = 34, R = 17;
+  function layout() {
+    const kids = new Map(created.map(v => [v, []]));
+    const roots = [];
+    for (const v of created) (from.get(v) == null ? roots : kids.get(from.get(v))).push(v);
+    const pos = new Map();
+    let slot = 0, maxDepth = 0;
+    const place = (v, depth) => {
+      maxDepth = Math.max(maxDepth, depth);
+      const ks = kids.get(v);
+      let y;
+      if (!ks.length) y = slot++;
+      else { ks.forEach(k => place(k, depth + 1)); y = (pos.get(ks[0]).y + pos.get(ks[ks.length - 1]).y) / 2; }
+      pos.set(v, { depth, y });
+    };
+    roots.forEach(r => place(r, 0));
+    const P = new Map();
+    for (const [v, { depth, y }] of pos) P.set(v, [PADX + depth * DX, PADY + y * DY]);
+    return { P, w: Math.max(400, PADX * 2 + maxDepth * DX + 20), h: Math.max(130, PADY * 2 + (slot - 1) * DY) };
+  }
+
+  function renderReplica(rid, L) {
+    const box = $('rep' + rid);
+    const recs = reps[rid];
+    const { show, dormant, keptVerts } = analyze(rid);
+
+    // Vertices and edges to draw.
+    const verts = new Map(); // v -> { gid, ghost }
+    for (const [gid, how] of show) for (const v of recs.get(gid).verts) verts.set(v, { gid, ghost: how === 'kept' });
+    for (const v of keptVerts) if (!verts.has(v)) verts.set(v, { gid: owner.get(v), ghost: true });
+    const edges = [];
+    for (const [gid, how] of show) {
+      for (const [u, v] of recs.get(gid).edges) {
+        if (verts.has(u) && verts.has(v)) edges.push({ u, v, ghost: how === 'kept' || verts.get(u).ghost || verts.get(v).ghost });
+      }
+    }
+
+    const svg = el('svg:svg', { class: 'g', viewBox: `0 0 ${L.w} ${L.h}`, role: 'img',
+      'aria-label': `Replica ${rid} shows: ` + ([...show.keys()].map(g => `${gname(g)} (${recs.get(g).verts.join(', ')})`).join('; ') || 'nothing') });
+    for (const e of edges) {
+      const [x1, y1] = L.P.get(e.u), [x2, y2] = L.P.get(e.v);
+      const len = Math.hypot(x2 - x1, y2 - y1), ux = (x2 - x1) / len, uy = (y2 - y1) / len;
+      const sx = x1 + ux * (R + 2), sy = y1 + uy * (R + 2), ex = x2 - ux * (R + 3), ey = y2 - uy * (R + 3);
+      const bx = ex - ux * 9, by = ey - uy * 9;
+      svg.append(el('svg:g', { class: 'e' + (e.ghost ? ' ghost' : '') },
+        el('svg:line', { x1: sx.toFixed(1), y1: sy.toFixed(1), x2: bx.toFixed(1), y2: by.toFixed(1) }),
+        el('svg:polygon', { points: [[ex, ey], [bx - uy * 5, by + ux * 5], [bx + uy * 5, by - ux * 5]].map(p => p.map(n => n.toFixed(1)).join(',')).join(' ') })));
+    }
+    const labeled = new Set();
+    for (const v of created) {
+      if (!verts.has(v)) continue;
+      const { gid, ghost } = verts.get(v);
+      const [x, y] = L.P.get(v);
+      const g = el('svg:g', { class: 'v' + (ghost ? ' ghost' : '') + (fresh.has(v) ? ' fresh' : ''), style: `--gc:${gcolor(gid)}`,
+        tabindex: ghost ? null : 0, role: ghost ? null : 'button',
+        'aria-label': ghost ? null : `Vertex ${v} in ${gname(gid)}`,
+        onclick: ghost ? null : () => { selected[rid] = selected[rid] === v ? null : v; render(); },
+        onkeydown: ghost ? null : ev => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); selected[rid] = selected[rid] === v ? null : v; render(); } } },
+        el('svg:title', { text: `${v} (in ${gname(gid)})${ghost ? ', kept because an extension hangs off it' : ''}` }),
+        selected[rid] === v ? el('svg:circle', { class: 'ring', cx: x, cy: y, r: R + 5 }) : null,
+        el('svg:circle', { class: 'node', cx: x, cy: y, r: R }),
+        el('svg:text', { class: 'name', x, y, text: v }));
+      svg.append(g);
+      if (!labeled.has(gid)) {
+        labeled.add(gid);
+        svg.append(el('svg:text', { class: 'gid', style: `--gc:${gcolor(gid)}`, x: x - 10, y: y - R - 6, text: gname(gid) }));
+      }
+    }
+    if (!verts.size) svg.append(el('svg:text', { class: 'empty', x: L.w / 2, y: L.h / 2, text: 'Nothing to show' }));
+
+    // Actions for the selected vertex.
+    let actions;
+    const sv = selected[rid];
+    if (sv && verts.has(sv) && !verts.get(sv).ghost) {
+      const gid = owner.get(sv), rec = recs.get(gid);
+      actions = el('div', { class: 'actions' },
+        el('strong', { text: `${sv} in ${gname(gid)}:` }),
+        el('button', { text: `Extend from ${sv}`, onclick: () => extend(rid, sv) }),
+        el('button', { text: `Add a vertex after ${sv}`, onclick: () => addVertex(rid, sv) }),
+        el('button', { text: `Remove ${sv}`, disabled: rec.verts.length < 2 ? '' : null, title: rec.verts.length < 2 ? `${sv} is the only vertex; delete ${gname(gid)} instead` : null, onclick: () => removeVertex(rid, sv) }),
+        el('button', { text: `Delete ${gname(gid)}`, onclick: () => deleteGraph(rid, gid) }));
+    } else {
+      selected[rid] = null;
+      actions = el('div', { class: 'actions' }, el('span', { class: 'hint', text: 'Click a vertex to extend from it, add to its graph, or remove it.' }));
+    }
+
+    // Every graph this replica stores.
+    const list = el('ul', { class: 'glist', 'aria-label': `Graphs stored on replica ${rid}` });
+    for (const gid of sortGids(recs.keys())) {
+      const rec = recs.get(gid);
+      let st, why = null;
+      if (rec.deleted && show.get(gid) === 'kept') { st = ['kept', 'deleted, but kept']; why = 'something still hangs off it'; }
+      else if (rec.deleted) st = ['deleted', 'deleted'];
+      else if (dormant.has(gid)) { st = ['dormant', 'dormant']; why = dormant.get(gid); }
+      else st = ['shown', 'shown'];
+      list.append(el('li', { style: `--gc:${gcolor(gid)}` },
+        el('span', { class: 'sw', 'aria-hidden': 'true' }),
+        el('span', { class: 'gname', text: gname(gid) }),
+        el('span', { class: 'ver', text: verText(rec) }),
+        el('span', { class: 'st ' + st[0], text: st[1] }),
+        why ? el('span', { class: 'why', text: why }) : null,
+        rec.deleted
+          ? el('button', { text: 'Restore', 'aria-label': `Restore ${gname(gid)} on replica ${rid}`, onclick: () => restoreGraph(rid, gid) })
+          : el('button', { text: 'Delete', 'aria-label': `Delete ${gname(gid)} on replica ${rid}`, onclick: () => deleteGraph(rid, gid) })));
+    }
+
+    let badge = null;
+    if (strat === 'coord') badge = el('span', { class: 'badge', text: rid === 1 ? 'leader' : (connected ? 'follower' : 'can\'t reach leader') });
+    box.replaceChildren(
+      el('div', { class: 'rep-head' }, el('h4', { text: `Replica ${rid}` }), badge),
+      el('div', { class: 'g-wrap' }, svg),
+      actions, list);
+  }
+
+  function renderVerdict() {
+    const out = [];
+    if (!connected) {
+      const diff = sortGids(new Set([...reps[1].keys(), ...reps[2].keys()])).filter(g => reps[1].get(g) !== reps[2].get(g));
+      out.push('<p class="big">Partitioned.</p>');
+      out.push(diff.length
+        ? `<p>The replicas disagree about ${diff.map(gname).join(', ')}. Each replica's own state passed its checks. Heal the partition to merge them.</p>`
+        : '<p>The replicas still hold the same graphs.</p>');
+    } else {
+      const { show, dormant, keptVerts } = analyze(1);
+      const items = [];
+      for (const [g, why] of dormant) items.push(`<strong>${gname(g)}</strong> is dormant: ${why}. It's stored, and it comes back if its anchor does.`);
+      for (const [g, how] of show) if (how === 'kept') items.push(`<strong>${gname(g)}</strong> was deleted, but it's kept (dashed) because an extension hangs off it.`);
+      for (const v of keptVerts) items.push(`Vertex <strong>${v}</strong> was removed from ${gname(owner.get(v))}, but it's kept (dashed) because an extension hangs off it.`);
+      for (const g of cascadedUnseen) if (reps[1].get(g).deleted) items.push(`<strong>${g}</strong> was deleted by the cascade, though nobody chose to delete it.`);
+      for (const l of lost) items.push(`Lost to a concurrent write: ${l}.`);
+      if (rejected) items.push(`${rejected} write${rejected > 1 ? 's were' : ' was'} refused.`);
+      const ok = !dormant.size;
+      out.push(`<p class="big ${ok ? 'ok' : 'bad'}">Converged. ${ok ? 'Every extension shown is attached.' : 'Some extensions are hidden.'}</p>`);
+      out.push(items.length ? `<p>What it cost:</p><ul>${items.map(i => `<li>${i}</li>`).join('')}</ul>`
+        : '<p>Nothing was lost or hidden. Try a scenario, or cut the network and make conflicting changes on each side.</p>');
+    }
+    $('verdict').innerHTML = '<h3>What everyone sees</h3>' + out.join('');
+  }
+
+  function render() {
+    for (const b of $('strats').children) b.setAttribute('aria-pressed', String(b.dataset.s === strat));
+    $('strat-desc').innerHTML = STRATS[strat].desc;
+    $('net-status').textContent = connected ? 'Connected' : 'Partitioned';
+    $('net-status').className = 'status ' + (connected ? 'on' : 'off');
+    $('net-btn').textContent = connected ? 'Cut the network' : 'Heal the partition';
+    const L = layout();
+    renderReplica(1, L);
+    renderReplica(2, L);
+    renderVerdict();
+    $('log').replaceChildren(...logItems.map(l => el('li', { html: who(l.rid) + l.html })));
+    fresh = new Set();
+  }
+
+  for (const [k, s] of Object.entries(STRATS)) {
+    $('strats').append(el('button', { 'data-s': k, text: s.name, onclick: () => {
+      strat = k; reset();
+      logit(0, `Started fresh with the <strong>${s.name}</strong> strategy. Both replicas hold the base, A → B.`);
+      render();
+    } }));
+  }
+  for (const s of SCENARIOS) $('scens').append(el('button', { text: s.name, onclick: () => scenario(s.id) }));
+  $('scens').append(el('button', { text: 'Reset', onclick: () => { reset(); logit(0, `Started fresh with the <strong>${STRATS[strat].name}</strong> strategy.`); render(); } }));
+  $('net-btn').addEventListener('click', () => setNetwork(!connected));
+  reset();
+  logit(0, `Started with the <strong>${STRATS[strat].name}</strong> strategy. Both replicas hold the base, A → B.`);
+  render();
+  </script>
+</body>
+</html>

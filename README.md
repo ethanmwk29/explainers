@@ -8,6 +8,7 @@ Small, interactive explainers, served with GitHub Pages at https://ethanmwk29.gi
 - [Scuttlebutt gossip](https://ethanmwk29.github.io/explainers/distributed-systems/scuttlebutt/): efficient reconciliation and flow control for anti-entropy gossip.
 - [Vector clocks](https://ethanmwk29.github.io/explainers/distributed-systems/vector-clocks/): happened-before, Lamport clocks, and detecting concurrency with one counter per process.
 - [Replicated DAGs](https://ethanmwk29.github.io/explainers/distributed-systems/replicated-dags/): why "no cycles" can't survive a leaderless merge, and four ways around it, with a partition sandbox.
+- [Graph extensions](https://ethanmwk29.github.io/explainers/distributed-systems/graph-extensions/): a base graph plus extensions, each replicated as a versioned unit, and what to do when a delete orphans an extension.
 
 **Data Structures & Algorithms**
 - [Union Find](https://ethanmwk29.github.io/explainers/data-structures-algorithms/union-find/): parent pointers, union by size, and path compression.

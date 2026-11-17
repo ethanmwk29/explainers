@@ -35,7 +35,7 @@
     .replicas > * { min-width: 0; }
     @media (max-width: 820px) {
       .replicas { grid-template-columns: minmax(0, 1fr); }
-      .network { flex-direction: row !important; flex-wrap: wrap; justify-content: center; padding-top: 0 !important; }
+      .network { flex-direction: row !important; flex-wrap: wrap; justify-content: center; align-items: center !important; padding-top: 0 !important; }
     }
     .replica { border-top: 4px solid var(--rc); }
     #rep1 { --rc: var(--a); }
@@ -297,6 +297,7 @@ func reaches(out map[string][]string, src, dst string) bool {
       <li>The <a href="../add-wins-set/">add-wins set</a> is how the edge rows themselves merge, and the vertex-deletion problem above is its add-versus-remove question again.</li>
       <li><a href="../consistency-models/">Consistency models</a>: strategy 1 is the price of an "unavailable" model; the others stay available by weakening what a write promises.</li>
       <li><a href="../vector-clocks/">Vector clocks</a> and Lamport timestamps provide the agreed-on order that strategies 3 and 4 rely on.</li>
+      <li><a href="../graph-extensions/">Graph extensions</a> replicates whole graphs instead of rows, and looks at what breaks when one graph references another that gets deleted.</li>
       <li>The <a href="../../data-structures-algorithms/cycle-detection/">cycle detection cheat sheet</a>, <a href="../../data-structures-algorithms/tarjan-scc/">Tarjan's SCC algorithm</a>, and <a href="../../data-structures-algorithms/topological-sort/">topological sort</a> are the tools for the local checks and for detecting cycles after a merge.</li>
     </ul>
 
