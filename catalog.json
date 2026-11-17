@@ -23,6 +23,11 @@
         "slug": "vector-clocks",
         "title": "Vector clocks",
         "blurb": "How to tell which events could have influenced which without a shared clock, and why one counter per process is enough to detect concurrency."
+      },
+      {
+        "slug": "replicated-dags",
+        "title": "Replicated DAGs",
+        "blurb": "Why no CRDT can keep a leaderless replicated graph acyclic, and the four ways systems cope, in a two-replica partition sandbox."
       }
     ]
   },

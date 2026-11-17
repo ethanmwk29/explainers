@@ -1,0 +1,710 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Replicated DAGs</title>
+  <meta name="description" content="Why no CRDT can keep a leaderless replicated graph acyclic, and the four ways systems cope, with a two-replica partition sandbox.">
+  <link rel="stylesheet" href="../../style.css?v=6">
+  <script src="../../theme.js"></script>
+  <style>
+    .wide { width: min(1100px, calc(100vw - 32px)); margin: 1.6em 0 2.2em; position: relative; left: 50%; transform: translateX(-50%); }
+    .panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; min-width: 0; }
+    .panel h3 { font-size: 0.75rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 10px; font-weight: 600; }
+    .rules { padding-left: 1.2em; }
+    .rules li { margin-bottom: 0.5em; }
+    main h3 { margin: 1.8em 0 0.4em; font-size: 1.15rem; }
+    table.cmp { border-collapse: collapse; width: 100%; font-size: 0.93rem; margin: 0.6em 0 1.2em; }
+    .cmp th, .cmp td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+    .cmp thead th { color: var(--muted); font-weight: 600; font-size: 0.82rem; }
+    .cmp td.y { color: var(--ok); font-weight: 700; white-space: nowrap; }
+    .cmp td.n { color: var(--warn); font-weight: 700; white-space: nowrap; }
+    .table-wrap { overflow-x: auto; }
+    pre.snippet { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; overflow-x: auto; font-size: 0.85rem; line-height: 1.5; }
+    pre.snippet code { background: none; padding: 0; }
+    .cite { font-size: 0.92rem; color: var(--muted); }
+
+    /* ---------- Sandbox ---------- */
+    .bar { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; margin-bottom: 10px; }
+    .bar .lbl { font-size: 0.75rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; }
+    .seg { display: flex; flex-wrap: wrap; gap: 6px; }
+    .seg button { font-size: 0.88rem; padding: 0.35em 0.8em; }
+    .seg button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+    .strat-desc { margin: 0 0 14px; font-size: 0.95rem; }
+    .replicas { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 14px; align-items: start; }
+    .replicas > * { min-width: 0; }
+    @media (max-width: 820px) {
+      .replicas { grid-template-columns: minmax(0, 1fr); }
+      .network { flex-direction: row !important; flex-wrap: wrap; justify-content: center; padding-top: 0 !important; }
+    }
+    .replica { border-top: 4px solid var(--rc); }
+    #rep1 { --rc: var(--a); }
+    #rep2 { --rc: var(--b); }
+    .rep-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+    .rep-head h4 { margin: 0; color: var(--rc); font-size: 1.05rem; }
+    .badge { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; padding: 1px 8px; border-radius: 999px; border: 1.5px solid var(--muted); color: var(--muted); }
+    .g-wrap { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; }
+    svg.g { display: block; width: 100%; height: auto; touch-action: manipulation; }
+    .g text { font-family: var(--sans); pointer-events: none; }
+    .g .v circle.node { fill: var(--surface); stroke: var(--text); stroke-width: 2; }
+    .g .v { cursor: pointer; }
+    .g .v:hover circle.node { stroke-width: 3.5; }
+    .g .v.sel circle.node { stroke: var(--rc); stroke-width: 4.5; }
+    .g .v text.name { font-size: 17px; font-weight: 700; text-anchor: middle; dominant-baseline: central; fill: var(--text); }
+    .g .v circle.rank { fill: var(--surface-2); stroke: var(--muted); stroke-width: 1.2; }
+    .g .v text.rank { font-size: 10.5px; font-weight: 700; text-anchor: middle; dominant-baseline: central; fill: var(--muted); }
+    .g .e path.line { fill: none; stroke: var(--muted); stroke-width: 2.2; }
+    .g .e polygon { fill: var(--muted); }
+    .g .e path.hit { fill: none; stroke: transparent; stroke-width: 16; cursor: pointer; }
+    .g .e:hover path.line { stroke: var(--text); }
+    .g .e:hover polygon { fill: var(--text); }
+    .g .e.cyc path.line { stroke: var(--warn); stroke-width: 3.2; }
+    .g .e.cyc polygon { fill: var(--warn); }
+    .g .e.hid path.line { stroke-dasharray: 5 5; opacity: 0.55; }
+    .g .e.hid polygon { opacity: 0.55; }
+    .g .e.fresh path.line { animation: flash 1.8s ease-out; }
+    @keyframes flash { 0%, 35% { stroke: var(--fresh); stroke-width: 6; } }
+    .hint { font-size: 0.82rem; color: var(--muted); margin: 6px 0 8px; }
+    .add-form { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; font-size: 0.9rem; }
+    .add-form select { font: inherit; padding: 0.3em 0.4em; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); }
+    .add-form button.add { background: var(--rc); border-color: var(--rc); color: var(--on-accent); }
+    .edges { list-style: none; margin: 10px 0 0; padding: 0; font-size: 0.88rem; }
+    .edges li { display: flex; align-items: center; gap: 8px; padding: 3px 0; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+    .edges li:last-child { border-bottom: none; }
+    .edges .pair { font-family: var(--mono); font-weight: 700; }
+    .edges .ts { font-family: var(--mono); font-size: 0.78rem; color: var(--muted); }
+    .edges .flag { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+    .edges .flag.cyc { color: var(--warn); }
+    .edges .flag.hid { color: var(--muted); }
+    .edges button.x { margin-left: auto; border: none; background: transparent; color: var(--muted); padding: 0 6px; font-size: 1.1rem; line-height: 1.3; }
+    .edges button.x:hover { color: var(--warn); }
+    .edges .none { color: var(--muted); font-style: italic; border: none; }
+    .rep-note { font-size: 0.88rem; margin: 10px 0 0; }
+    .rep-note.bad { color: var(--warn); font-weight: 600; }
+    .network { display: flex; flex-direction: column; gap: 8px; align-items: stretch; padding-top: 70px; }
+    .network button { white-space: nowrap; min-width: 150px; }
+    .status { white-space: nowrap; font-size: 0.8rem; text-align: center; padding: 4px 10px; border-radius: 999px; font-weight: 700; }
+    .status.on { color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, transparent); }
+    .status.off { color: var(--warn); background: color-mix(in srgb, var(--warn) 12%, transparent); }
+    .below { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 14px; margin-top: 14px; }
+    @media (max-width: 820px) { .below { grid-template-columns: minmax(0, 1fr); } }
+    .verdict p { margin: 0 0 8px; }
+    .verdict p:last-child { margin-bottom: 0; }
+    .verdict .big { font-size: 1.05rem; font-weight: 700; }
+    .verdict .ok { color: var(--ok); }
+    .verdict .bad { color: var(--warn); }
+    .log { list-style: none; margin: 0; padding: 0; font-size: 0.85rem; max-height: 240px; overflow-y: auto; }
+    .log li { padding: 4px 0; border-bottom: 1px solid var(--border); }
+    .log li:last-child { border-bottom: none; }
+    .log .who { font-weight: 700; }
+    .log .who.r1 { color: var(--a); }
+    .log .who.r2 { color: var(--b); }
+    .log .no { color: var(--warn); font-weight: 600; }
+    .rows { font-family: var(--mono); font-size: 0.85rem; }
+  </style>
+</head>
+<body>
+  <main>
+    <nav class="crumbs"><a href="../../">Explainers</a><span>/</span><a href="../">Distributed Systems</a></nav>
+    <h1>Replicated DAGs</h1>
+    <p class="lede">Two replicas can each make a perfectly valid change to a graph, and merging the two changes can produce a graph that isn't valid. No merge function can fix that. This page shows why and what systems do instead.</p>
+
+    <h2>A graph as rows</h2>
+    <p>A common way to store a graph in a replicated key-value or wide-column database is one row per vertex and one row per edge. Graph databases built on Cassandra, like <a href="https://janusgraph.org/">JanusGraph</a>, store graphs in roughly this shape, and so do many hand-built "adjacency list" tables:</p>
+    <div class="table-wrap">
+      <table class="cmp rows">
+        <thead><tr><th>Key</th><th>Value</th></tr></thead>
+        <tbody>
+          <tr><td>vertex/A</td><td>{ name: "Write the spec" }</td></tr>
+          <tr><td>vertex/B</td><td>{ name: "Build it" }</td></tr>
+          <tr><td>edge/A/B</td><td>{ added by replica 1 }</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>Each row merges well on its own. The set of edge rows behaves like the <a href="../add-wins-set/">add-wins set</a>: if two replicas add edges at the same time, the merge keeps both, and every replica that has seen the same updates ends up with the same edges. That property is called <strong>convergence</strong>.</p>
+
+    <h2>Convergence isn't the same as staying valid</h2>
+    <p>Suppose the graph is a list of tasks, and an edge <code>A → B</code> means "A must be done before B". A dependency graph like this has to stay a <strong>DAG</strong> (directed acyclic graph): if A must come before B and B before A, nothing can ever start.</p>
+    <p>Now replicate it with no leader. Both replicas have vertices A and B. The network splits.</p>
+    <ul class="rules">
+      <li>On replica 1, someone adds <code>A → B</code>. Replica 1's graph is still a DAG.</li>
+      <li>On replica 2, someone adds <code>B → A</code>. Replica 2's graph is still a DAG.</li>
+      <li>The network heals. The merged edge set is <code>{A → B, B → A}</code>, which is a cycle.</li>
+    </ul>
+    <p>Each replica checked the rule. The rule held everywhere, right up until the merge. And nothing about the merge was wrong: it converged, exactly as designed. The problem is that "no cycles" is a property of the <em>whole graph</em>, and neither replica could see the whole graph when it said yes.</p>
+
+    <h3>Invariant confluence</h3>
+    <p>Peter Bailis and his coauthors gave this a name in <a href="https://arxiv.org/abs/1402.2237">Coordination Avoidance in Database Systems</a> (VLDB 2015). A rule (an <strong>invariant</strong>) is <strong>invariant confluent</strong> if this is always true: start from a valid state, let two replicas each make changes that keep their own copy valid, and the merge of the two copies is valid too.</p>
+    <p>Their result: <strong>an invariant can be enforced without coordination exactly when it's invariant confluent.</strong> The example above shows that "acyclic" fails the test. So no CRDT, and no clever merge function, can guarantee all of these at once:</p>
+    <ol class="rules">
+      <li>Every replica can accept edge inserts during a partition.</li>
+      <li>Every accepted edge stays in the graph.</li>
+      <li>Edges can point in any direction.</li>
+      <li>The graph never has a cycle.</li>
+    </ol>
+    <p>Every real design gives up one of the four. The sandbox below lets you try each choice.</p>
+
+    <h2>Partition sandbox</h2>
+    <p>Two replicas share a graph of five vertices. While they're connected, every change reaches both immediately. Cut the network, make changes on each side, then heal it and see what the strategy does. Click one vertex and then another to add an edge (or use the menus), and click an edge to remove it. The scenario buttons replay the A/B example above, and a three-edge version of it.</p>
+  </main>
+
+  <section class="wide" aria-label="Partition sandbox">
+    <div class="panel">
+      <div class="bar">
+        <span class="lbl" id="strat-lbl">Strategy</span>
+        <div class="seg" id="strats" role="group" aria-labelledby="strat-lbl"></div>
+      </div>
+      <p class="strat-desc" id="strat-desc"></p>
+      <div class="bar">
+        <span class="lbl" id="scen-lbl">Try</span>
+        <div class="seg" role="group" aria-labelledby="scen-lbl">
+          <button id="scen-two">A → B vs. B → A</button>
+          <button id="scen-three">Three-edge cycle</button>
+          <button id="reset">Reset</button>
+        </div>
+      </div>
+
+      <div class="replicas">
+        <div class="panel replica" id="rep1"></div>
+        <div class="network">
+          <div class="status on" id="net-status">Connected</div>
+          <button id="net-btn">Cut the network</button>
+        </div>
+        <div class="panel replica" id="rep2"></div>
+      </div>
+
+      <div class="below">
+        <div class="panel verdict" id="verdict" aria-live="polite"></div>
+        <div class="panel">
+          <h3>Log</h3>
+          <ul class="log" id="log"></ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <main style="padding-top: 0">
+    <h2>The four strategies</h2>
+
+    <h3>1. Coordinate the risky writes</h3>
+    <p>Send every edge insert through one place that can see the whole graph, such as a leader or a consensus group. The rest of the system can stay leaderless: vertex writes, property updates, and edge <em>removals</em> are all safe to merge (removing an edge can never create a cycle).</p>
+    <p><strong>What you give up:</strong> availability. A replica cut off from the leader can't add edges until the partition heals. On the <a href="../consistency-models/">consistency models</a> map, this is the "unavailable" class. It's cheapest when a cycle can only form inside one partition of the data, for example when each project's task graph lives on one shard. A cycle that could cross shards needs a cross-shard transaction.</p>
+
+    <h3>2. Make the rule local with a fixed order</h3>
+    <p>Give every vertex a rank when it's created, and only allow edges from a lower rank to a higher one. Any graph that follows this rule is a DAG: every path climbs in rank, so it can never return to where it started. And each edge can be checked by looking at just that edge, so the check survives merging. "Every edge goes uphill" is invariant confluent even though "no cycles" isn't.</p>
+    <p>Git's commit graph works this way. A commit names its parents by their hashes when it's created, so it can only point to commits that already exist, and no older commit can ever point to it. The rank is simply creation order. (A ranked graph like this is already in <a href="../../data-structures-algorithms/topological-sort/">topological order</a>.)</p>
+    <p><strong>What you give up:</strong> freedom. Some edges are rejected even when they wouldn't create a cycle. If ranks can be changed later to make room, two concurrent rank changes can bring cycles back, so you'd need one of the other strategies for those.</p>
+
+    <h3>3. Keep everything and resolve when reading</h3>
+    <p>Store every edge insert, each with a timestamp that is unique and the same on every replica (a <a href="../vector-clocks/">Lamport timestamp</a> with the replica ID to break ties). To show the graph, replay the edges oldest first and hide any edge that would close a cycle with the edges kept so far. Every replica that has the same edges hides the same ones, so they all show the same DAG.</p>
+    <p>Martin Kleppmann and his coauthors used this idea for trees in <a href="https://martin.kleppmann.com/papers/move-op.pdf">A highly-available move operation for replicated trees</a> (2021). Moving a folder into its own subfolder on one replica while the reverse happens on another creates a cycle. Their algorithm applies moves in timestamp order, undoing and redoing when an older move arrives late, and skips any move that would create a cycle.</p>
+    <p>Which edge loses depends only on the timestamps. In the sandbox's three-edge scenario, replica 1 adds <code>A → B</code> and then <code>B → C</code>, while replica 2 adds <code>C → A</code>. Replica 2's edge carries timestamp 1, older than replica 1's second edge, so <code>B → C</code> is the one hidden, even though replica 1 "got there first" in wall-clock terms.</p>
+    <p><strong>What you give up:</strong> durability of writes. An edge a user saw accepted can later disappear when an older conflicting edge arrives. Hidden edges should be shown somewhere ("this dependency was dropped because it conflicted with…") or users will think the database lost their data.</p>
+
+    <h3>4. Detect and repair</h3>
+    <p>Accept everything, merge as usual, and look for cycles afterward. A cycle is exactly a <a href="../../data-structures-algorithms/tarjan-scc/">strongly connected component</a> with more than one vertex, so Tarjan's algorithm finds them all in one pass. Then fix them: remove an edge automatically, or flag the cycle for a person to resolve. Pat Helland calls this "memories, guesses, and apologies": act on what you know locally, and apologize when it turns out to be wrong.</p>
+    <p>If replicas repair on their own, they must all pick the <em>same</em> edge to remove, such as the newest edge on the cycle. Otherwise replica 1 removes <code>A → B</code>, replica 2 removes <code>B → A</code>, and after the next merge both edges are gone.</p>
+    <p><strong>What you give up:</strong> the invariant itself, for a while. Anything that reads the graph between the merge and the repair must cope with a cycle. A topological sort, for example, has to handle the leftover vertices instead of looping forever.</p>
+
+    <h2>Pick three</h2>
+    <p>Each strategy keeps three of the four properties from earlier:</p>
+    <div class="table-wrap">
+      <table class="cmp">
+        <thead><tr><th>Strategy</th><th>Inserts during a partition</th><th>Accepted edges stay</th><th>Any direction</th><th>Never a cycle</th></tr></thead>
+        <tbody>
+          <tr><td>Coordinate</td><td class="n">✗ minority side waits</td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td></tr>
+          <tr><td>Fixed order</td><td class="y">✓</td><td class="y">✓</td><td class="n">✗ uphill only</td><td class="y">✓</td></tr>
+          <tr><td>Resolve when reading</td><td class="y">✓</td><td class="n">✗ may be hidden</td><td class="y">✓</td><td class="y">✓ in the view</td></tr>
+          <tr><td>Detect and repair</td><td class="y">✓</td><td class="n">✗ repair removes</td><td class="y">✓</td><td class="n">✗ until repaired</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>A useful rule of thumb: use a fixed order when the domain already has one (versions, time, a hierarchy that only grows downward). Use resolve-when-reading when users need edges in any direction and can live with an occasional "your change was dropped". Coordinate when a dropped write is unacceptable and the graph partitions cleanly.</p>
+
+    <h2>Which graph rules are safe?</h2>
+    <p>The invariant confluence test works for any rule. A rough guide: a check that looks at one row at a time, or only requires that something <em>exists</em>, survives merging. A check that requires something to <em>not</em> exist (a second parent, a duplicate name, a path back) usually doesn't, because the other replica may be creating that thing right now. This matches the <a href="https://arxiv.org/abs/1901.01930">CALM theorem</a> (Hellerstein and Alvaro): programs whose conclusions only grow as data arrives never need coordination.</p>
+    <div class="table-wrap">
+      <table class="cmp">
+        <thead><tr><th>Rule</th><th>Safe without coordination?</th><th>Why</th></tr></thead>
+        <tbody>
+          <tr><td>No self-loops</td><td class="y">✓</td><td>Each edge is checked on its own; merging sets of good edges gives a set of good edges.</td></tr>
+          <tr><td>Every edge goes from lower to higher rank</td><td class="y">✓</td><td>Same: a property of one edge at a time.</td></tr>
+          <tr><td>Both endpoints of an edge exist (vertices are only added)</td><td class="y">✓</td><td>Merging only adds vertices, so an endpoint that existed still exists.</td></tr>
+          <tr><td>Both endpoints exist (vertices can be deleted)</td><td class="n">✗</td><td>Replica 1 deletes A while replica 2 adds <code>A → C</code>. You need a rule: the edge brings A back (add-wins), or edges to deleted vertices are hidden when reading.</td></tr>
+          <tr><td>Each vertex has at most one parent</td><td class="n">✗</td><td>Two replicas each give B a different parent.</td></tr>
+          <tr><td>At most <i>k</i> outgoing edges</td><td class="n">✗</td><td>Each replica adds the <i>k</i>-th edge.</td></tr>
+          <tr><td>Vertex names are unique</td><td class="n">✗</td><td>Each replica creates a vertex with the same name.</td></tr>
+          <tr><td>No cycles</td><td class="n">✗</td><td>The A/B example.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h2>Resolving when reading, in Go</h2>
+    <p>Here's strategy 3 as a function of the replicated edge set (with removed edges already filtered out). It's tested on 20,000 random edge sets: the result is always acyclic, every hidden edge really does close a cycle with older kept edges, and shuffling the input never changes the answer.</p>
+<pre class="snippet"><code>// Edge is one replicated edge insert. (Counter, Replica) is a Lamport
+// timestamp: unique per insert, and the same on every replica.
+type Edge struct {
+	From, To string
+	Counter  int
+	Replica  int
+}
+
+// Resolve turns the replicated set of edges into a DAG that every
+// replica agrees on. It replays the edges oldest first and hides any
+// edge that would close a cycle with the edges kept so far. Two
+// replicas holding the same edges, received in any order, get the
+// same answer.
+func Resolve(edges []Edge) (kept, hidden []Edge) {
+	sorted := slices.Clone(edges)
+	slices.SortFunc(sorted, func(a, b Edge) int {
+		return cmp.Or(cmp.Compare(a.Counter, b.Counter), cmp.Compare(a.Replica, b.Replica))
+	})
+	out := map[string][]string{}
+	for _, e := range sorted {
+		if reaches(out, e.To, e.From) {
+			hidden = append(hidden, e) // From→To would close a cycle
+			continue
+		}
+		out[e.From] = append(out[e.From], e.To)
+		kept = append(kept, e)
+	}
+	return kept, hidden
+}
+
+// reaches reports whether there is a path from src to dst.
+func reaches(out map[string][]string, src, dst string) bool {
+	seen := map[string]bool{src: true}
+	stack := []string{src}
+	for len(stack) &gt; 0 {
+		v := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		if v == dst {
+			return true
+		}
+		for _, w := range out[v] {
+			if !seen[w] {
+				seen[w] = true
+				stack = append(stack, w)
+			}
+		}
+	}
+	return false
+}</code></pre>
+    <p>This recomputes from scratch, which costs O(E · (V + E)). That's fine for a few thousand edges. A real system would cache the result and redo only the part after the oldest newly arrived edge, which is what Kleppmann's undo/redo does.</p>
+
+    <h2>How this connects to the other explainers</h2>
+    <ul class="rules">
+      <li>The <a href="../add-wins-set/">add-wins set</a> is how the edge rows themselves merge, and the vertex-deletion problem above is its add-versus-remove question again.</li>
+      <li><a href="../consistency-models/">Consistency models</a>: strategy 1 is the price of an "unavailable" model; the others stay available by weakening what a write promises.</li>
+      <li><a href="../vector-clocks/">Vector clocks</a> and Lamport timestamps provide the agreed-on order that strategies 3 and 4 rely on.</li>
+      <li>The <a href="../../data-structures-algorithms/cycle-detection/">cycle detection cheat sheet</a>, <a href="../../data-structures-algorithms/tarjan-scc/">Tarjan's SCC algorithm</a>, and <a href="../../data-structures-algorithms/topological-sort/">topological sort</a> are the tools for the local checks and for detecting cycles after a merge.</li>
+    </ul>
+
+    <aside class="interview" aria-label="Interview notes">
+      <h2>Interview notes</h2>
+      <p><b>How often it comes up:</b> <strong>Occasionally in system design interviews</strong>, usually in its most common form: "how do you keep usernames unique in a multi-region, multi-leader setup?" It's the same problem as the cycle, with a uniqueness rule.</p>
+      <p><b>Be ready to:</b></p>
+      <ul>
+        <li>Explain why convergence doesn't preserve invariants, with a two-replica example like A → B vs. B → A.</li>
+        <li>Name the test (invariant confluence) and sort rules into safe and unsafe: per-row checks and "must exist" rules are safe; uniqueness, limits, and "no path back" are not.</li>
+        <li>Propose a hybrid: keep most writes multi-leader, but route the writes that can break the rule (edge inserts, username claims) through a single home region or a consensus group.</li>
+        <li>Discuss the user-facing cost of the available options: a write that was accepted and later hidden or removed needs to be shown and explained.</li>
+      </ul>
+      <p><b>Related coding problems:</b> <span class="lc">LeetCode 207</span> Course Schedule and <span class="lc">LeetCode 210</span> Course Schedule II are the single-machine version: detect a cycle in a dependency graph, or produce an order.</p>
+    </aside>
+
+    <p class="cite">Further reading: Bailis, Fekete, Franklin, Ghodsi, Hellerstein, and Stoica, <a href="https://arxiv.org/abs/1402.2237">Coordination Avoidance in Database Systems</a>; Kleppmann, Mulligan, Gomes, and Beresford, <a href="https://martin.kleppmann.com/papers/move-op.pdf">A highly-available move operation for replicated trees</a>; Hellerstein and Alvaro, <a href="https://arxiv.org/abs/1901.01930">Keeping CALM: When Distributed Consistency is Easy</a>.</p>
+
+    <footer>Part of <a href="../">Distributed Systems</a> in <a href="../../">Explainers</a>.</footer>
+  </main>
+
+  <script>
+  const $ = id => document.getElementById(id);
+  const SVGNS = 'http://www.w3.org/2000/svg';
+  function el(tag, attrs = {}, ...kids) {
+    const n = tag.startsWith('svg:') ? document.createElementNS(SVGNS, tag.slice(4)) : document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs)) {
+      if (k === 'text') n.textContent = v;
+      else if (k === 'html') n.innerHTML = v;
+      else if (k.startsWith('on')) n.addEventListener(k.slice(2), v);
+      else n.setAttribute(k, v);
+    }
+    for (const kid of kids.flat(Infinity)) if (kid != null) n.append(kid);
+    return n;
+  }
+
+  // =====================================================================
+  // Graph model
+  // =====================================================================
+  const V = ['A', 'B', 'C', 'D', 'E'];
+  const POS = { A: [52, 78], B: [126, 178], C: [200, 78], D: [274, 178], E: [348, 78] };
+  const RANK = { A: 1, B: 2, C: 3, D: 4, E: 5 };
+  const R = 21;
+
+  const STRATS = {
+    coord: { name: 'Coordinate',
+      desc: '<strong>Replica 1 is the leader.</strong> Every edge insert must be approved by it, and it checks the whole graph for cycles. Cut off from the leader, replica 2 can still read and remove edges, but it can\'t add them.' },
+    rank: { name: 'Fixed order',
+      desc: '<strong>Each vertex has a rank</strong> (shown in its corner) from when it was created. An edge must go from a lower rank to a higher one, so each edge can be checked on its own, anywhere, anytime.' },
+    resolve: { name: 'Resolve when reading',
+      desc: '<strong>Every edge is stored with a timestamp.</strong> To show the graph, each replica replays the edges oldest first and hides any edge that would close a cycle. Hidden edges are drawn dashed.' },
+    detect: { name: 'Detect and repair',
+      desc: '<strong>Edges are merged as they are.</strong> Cycles are highlighted after the merge, and Repair removes the newest edge on each cycle (every replica would pick the same one).' },
+  };
+
+  let strat = 'coord';
+  let connected = true;
+  let reps, logItems, selected, fresh;
+
+  function newRep(id) { return { id, clock: 0, adds: new Map(), removed: new Set() }; }
+  const cmpTs = (a, b) => a.c - b.c || a.r - b.r;
+  const tsText = e => `@${e.c}·R${e.r}`;
+  const live = r => [...r.adds.values()].filter(e => !r.removed.has(e.id));
+
+  // The edges a replica shows. Under "resolve when reading", edges that
+  // would close a cycle with older kept edges are marked hidden.
+  function view(r) {
+    const L = live(r).sort(cmpTs);
+    if (strat !== 'resolve') return L.map(e => ({ ...e, hidden: false }));
+    const adj = {};
+    return L.map(e => {
+      if (reaches(adj, e.v, e.u)) return { ...e, hidden: true };
+      (adj[e.u] ||= []).push(e.v);
+      return { ...e, hidden: false };
+    });
+  }
+  function adjOf(edges) {
+    const a = {};
+    for (const e of edges) if (!e.hidden) (a[e.u] ||= []).push(e.v);
+    return a;
+  }
+  function pathFrom(adj, s, t) {
+    const prev = { [s]: null }, q = [s];
+    while (q.length) {
+      const x = q.shift();
+      if (x === t) {
+        const p = [];
+        for (let y = t; y != null; y = prev[y]) p.unshift(y);
+        return p;
+      }
+      for (const y of adj[x] || []) if (!(y in prev)) { prev[y] = x; q.push(y); }
+    }
+    return null;
+  }
+  const reaches = (adj, s, t) => pathFrom(adj, s, t) !== null;
+  // Edge u→v is on a cycle exactly when v can reach u.
+  const onCycle = (adj, e) => !e.hidden && reaches(adj, e.v, e.u);
+  function findCycle(adj, edges) {
+    for (const e of edges) {
+      if (e.hidden) continue;
+      const p = pathFrom(adj, e.v, e.u);
+      if (p) return [e.u, ...p];
+    }
+    return null;
+  }
+  const arrow = vs => vs.join(' → ');
+
+  // =====================================================================
+  // Operations
+  // =====================================================================
+  function logit(rid, html, bad = false) {
+    logItems.unshift({ rid, html, bad });
+    if (logItems.length > 40) logItems.pop();
+  }
+  const who = rid => rid ? `<span class="who r${rid}">Replica ${rid}</span> ` : '';
+
+  function tryAdd(rid, u, v) {
+    const r = reps[rid];
+    const reject = why => { logit(rid, `<span class="no">couldn't add ${u} → ${v}:</span> ${why}`, true); render(); return false; };
+    if (u === v) return reject('an edge from a vertex to itself is a cycle.');
+    const vw = view(r);
+    if (vw.some(e => e.u === u && e.v === v && !e.hidden)) return reject('that edge is already there.');
+    if (strat === 'coord') {
+      if (rid === 2 && !connected) return reject('it can\'t reach the leader (replica 1) to approve it. Edge inserts wait until the partition heals.');
+      const lv = view(reps[1]);
+      const p = pathFrom(adjOf(lv), v, u);
+      if (p) return reject(`the leader checked the whole graph: it would close the cycle ${arrow([u, ...p])}.`);
+    } else if (strat === 'rank') {
+      if (RANK[u] > RANK[v]) {
+        const p = pathFrom(adjOf(vw), v, u);
+        return reject(`${u} has rank ${RANK[u]} and ${v} has rank ${RANK[v]}, so the edge goes downhill.` +
+          (p ? '' : ' It\'s rejected even though it wouldn\'t create a cycle.'));
+      }
+    } else {
+      const p = pathFrom(adjOf(vw), v, u);
+      if (p) return reject(`it would close the cycle ${arrow([u, ...p])} on this replica.`);
+    }
+    r.clock++;
+    const e = { id: `${rid}.${r.clock}`, u, v, c: r.clock, r: rid };
+    r.adds.set(e.id, e);
+    logit(rid, `added ${u} → ${v}` + (strat === 'resolve' || strat === 'detect' ? ` <span class="mono">${tsText(e)}</span>` : '') +
+      (strat === 'coord' && rid === 2 ? ' (approved by the leader)' : '') + '.');
+    if (connected) sync();
+    render();
+    return true;
+  }
+
+  function removePair(rid, u, v) {
+    const r = reps[rid];
+    for (const e of live(r)) if (e.u === u && e.v === v) r.removed.add(e.id);
+    logit(rid, `removed ${u} → ${v}. Removing an edge can't create a cycle, so this is always allowed.`);
+    if (connected) sync();
+    render();
+  }
+
+  function merge(into, from) {
+    const gained = [];
+    for (const [id, e] of from.adds) if (!into.adds.has(id)) { into.adds.set(id, e); gained.push(id); }
+    for (const id of from.removed) into.removed.add(id);
+    into.clock = Math.max(into.clock, from.clock);
+    return gained;
+  }
+  function sync() {
+    for (const id of [...merge(reps[1], reps[2]), ...merge(reps[2], reps[1])]) fresh.add(id);
+  }
+
+  function setNetwork(on) {
+    if (on === connected) return;
+    if (!on) {
+      connected = false;
+      logit(0, 'The network is cut. Changes now stay on the replica that made them.');
+      render();
+      return;
+    }
+    const hiddenBefore = new Set([1, 2].flatMap(rid => view(reps[rid]).filter(e => e.hidden).map(e => e.id)));
+    const agreedBefore = sameEdges();
+    connected = true;
+    sync();
+    const vw = view(reps[1]);
+    const adj = adjOf(vw);
+    let msg = 'The partition heals and the replicas merge.';
+    if (agreedBefore) msg += ' Nothing had diverged.';
+    else if (strat === 'resolve') {
+      const newly = vw.filter(e => e.hidden && !hiddenBefore.has(e.id));
+      if (newly.length) msg += ' ' + newly.map(e => `${e.u} → ${e.v} (written by replica ${e.r}, ${tsText(e)}) is now hidden: older edges already lead from ${e.v} back to ${e.u}.`).join(' ');
+      else msg += ' No edges conflicted, so nothing is hidden.';
+    } else {
+      const cyc = findCycle(adj, vw);
+      msg += cyc ? ` <span class="no">The merged graph has a cycle: ${arrow(cyc)}.</span>` : ' The merged graph is still a DAG.';
+    }
+    logit(0, msg, strat === 'detect' && !!findCycle(adj, vw));
+    render();
+  }
+
+  function repair(rid) {
+    const r = reps[rid];
+    let removed = [];
+    for (;;) {
+      const vw = view(r), adj = adjOf(vw);
+      const cyc = vw.filter(e => onCycle(adj, e));
+      if (!cyc.length) break;
+      const newest = cyc.sort(cmpTs).at(-1);
+      for (const e of live(r)) if (e.u === newest.u && e.v === newest.v) r.removed.add(e.id);
+      removed.push(`${newest.u} → ${newest.v} <span class="mono">${tsText(newest)}</span>`);
+    }
+    logit(rid, `repaired the graph by removing ${removed.join(', ')}, the newest edge on the cycle.`);
+    if (connected) sync();
+    render();
+  }
+
+  function sameEdges() {
+    const key = r => live(r).map(e => e.id).sort().join(',');
+    return key(reps[1]) === key(reps[2]);
+  }
+
+  function reset(quiet) {
+    reps = { 1: newRep(1), 2: newRep(2) };
+    connected = true;
+    logItems = [];
+    selected = { 1: null, 2: null };
+    fresh = new Set();
+    if (!quiet) logit(0, `Started fresh with the <strong>${STRATS[strat].name}</strong> strategy. Both replicas have vertices A to E and no edges.`);
+  }
+
+  function scenario(kind) {
+    reset(true);
+    logit(0, `Started fresh with the <strong>${STRATS[strat].name}</strong> strategy.`);
+    setNetwork(false);
+    if (kind === 'two') {
+      tryAdd(1, 'A', 'B');
+      tryAdd(2, 'B', 'A');
+    } else {
+      tryAdd(1, 'A', 'B');
+      tryAdd(1, 'B', 'C');
+      tryAdd(2, 'C', 'A');
+    }
+    logit(0, 'Now heal the partition to see what happens.');
+    render();
+  }
+
+  // =====================================================================
+  // Rendering
+  // =====================================================================
+  function edgeGeom(u, v) {
+    const [x1, y1] = POS[u], [x2, y2] = POS[v];
+    const dx = x2 - x1, dy = y2 - y1, L = Math.hypot(dx, dy);
+    const nx = -dy / L, ny = dx / L;
+    const b = 14 + 0.22 * L;
+    const cx = (x1 + x2) / 2 + nx * b, cy = (y1 + y2) / 2 + ny * b;
+    const toward = (x, y, d) => { const l = Math.hypot(cx - x, cy - y); return [x + (cx - x) / l * d, y + (cy - y) / l * d]; };
+    const [sx, sy] = toward(x1, y1, R + 2);
+    const [ex, ey] = toward(x2, y2, R + 3);
+    const tl = Math.hypot(ex - cx, ey - cy), tx = (ex - cx) / tl, ty = (ey - cy) / tl;
+    const bx = ex - tx * 11, by = ey - ty * 11;
+    const d = `M${sx.toFixed(1)},${sy.toFixed(1)} Q${cx.toFixed(1)},${cy.toFixed(1)} ${bx.toFixed(1)},${by.toFixed(1)}`;
+    const head = [[ex, ey], [bx - ty * 5.5, by + tx * 5.5], [bx + ty * 5.5, by - tx * 5.5]].map(p => p.map(n => n.toFixed(1)).join(',')).join(' ');
+    return { d, head };
+  }
+
+  function pairsOf(vw) {
+    const pairs = new Map();
+    for (const e of vw) {
+      const k = e.u + e.v;
+      if (!pairs.has(k)) pairs.set(k, { u: e.u, v: e.v, insts: [] });
+      pairs.get(k).insts.push(e);
+    }
+    for (const p of pairs.values()) p.hidden = p.insts.every(e => e.hidden);
+    return [...pairs.values()];
+  }
+
+  function renderReplica(rid) {
+    const box = $('rep' + rid);
+    const r = reps[rid];
+    const vw = view(r), adj = adjOf(vw);
+    const pairs = pairsOf(vw);
+    const cyc = findCycle(adj, vw);
+    const showTs = strat === 'resolve' || strat === 'detect';
+    for (const p of pairs) p.cyc = !p.hidden && onCycle(adj, p.insts.find(e => !e.hidden));
+
+    const svg = el('svg:svg', { class: 'g', viewBox: '0 0 400 228', role: 'img',
+      'aria-label': `Replica ${rid} graph: ` + (pairs.filter(p => !p.hidden).map(p => `${p.u} to ${p.v}`).join(', ') || 'no edges') });
+    for (const p of pairs) {
+      const { d, head } = edgeGeom(p.u, p.v);
+      const isFresh = p.insts.some(e => fresh.has(e.id));
+      const g = el('svg:g', { class: 'e' + (p.cyc ? ' cyc' : '') + (p.hidden ? ' hid' : '') + (isFresh ? ' fresh' : '') },
+        el('svg:title', { text: `${p.u} → ${p.v}${p.hidden ? ' (hidden)' : ''}. Click to remove.` }),
+        el('svg:path', { class: 'line', d }),
+        el('svg:polygon', { points: head }),
+        el('svg:path', { class: 'hit', d, onclick: () => removePair(rid, p.u, p.v) }));
+      svg.append(g);
+    }
+    for (const v of V) {
+      const [x, y] = POS[v];
+      const g = el('svg:g', { class: 'v' + (selected[rid] === v ? ' sel' : ''), onclick: () => clickVertex(rid, v) },
+        el('svg:title', { text: `Vertex ${v}` }),
+        el('svg:circle', { class: 'node', cx: x, cy: y, r: R }),
+        el('svg:text', { class: 'name', x, y, text: v }));
+      if (strat === 'rank') {
+        g.append(el('svg:circle', { class: 'rank', cx: x + 17, cy: y - 17, r: 8.5 }),
+          el('svg:text', { class: 'rank', x: x + 17, y: y - 16.5, text: RANK[v] }));
+      }
+      svg.append(g);
+    }
+
+    const opts = sel => V.map(v => el('option', { value: v, text: v, ...(v === sel ? { selected: '' } : {}) }));
+    const from = el('select', { 'aria-label': `Replica ${rid}: edge from` }, opts(selected[rid] || 'A'));
+    const to = el('select', { 'aria-label': `Replica ${rid}: edge to` }, opts(selected[rid] === 'B' ? 'C' : 'B'));
+    const form = el('form', { class: 'add-form', onsubmit: ev => { ev.preventDefault(); selected[rid] = null; tryAdd(rid, from.value, to.value); } },
+      'Add', from, '→', to, el('button', { class: 'add', type: 'submit', text: 'Add edge' }));
+
+    const list = el('ul', { class: 'edges', 'aria-label': `Replica ${rid} edges` });
+    if (!pairs.length) list.append(el('li', { class: 'none', text: 'No edges yet.' }));
+    for (const p of pairs.sort((a, b) => cmpTs(a.insts[0], b.insts[0]))) {
+      list.append(el('li', {},
+        el('span', { class: 'pair', text: `${p.u} → ${p.v}` }),
+        showTs ? el('span', { class: 'ts', text: p.insts.map(tsText).join(' ') }) : null,
+        p.hidden ? el('span', { class: 'flag hid', text: 'hidden' }) : null,
+        p.cyc ? el('span', { class: 'flag cyc', text: 'on a cycle' }) : null,
+        el('button', { class: 'x', 'aria-label': `Remove ${p.u} to ${p.v} on replica ${rid}`, text: '×', onclick: () => removePair(rid, p.u, p.v) })));
+    }
+
+    let note;
+    if (cyc) note = el('p', { class: 'rep-note bad', text: `This replica's graph has a cycle: ${arrow(cyc)}.` });
+    else {
+      const nh = pairs.filter(p => p.hidden).length;
+      note = el('p', { class: 'rep-note', text: 'This replica\'s graph is a DAG.' + (nh ? ` ${nh} stored edge${nh > 1 ? 's are' : ' is'} hidden to keep it that way.` : '') });
+    }
+    const repairBtn = strat === 'detect' && cyc ? el('button', { class: 'primary', style: 'margin-top:8px', text: 'Repair', onclick: () => repair(rid) }) : null;
+
+    let badge = null;
+    if (strat === 'coord') badge = el('span', { class: 'badge', text: rid === 1 ? 'leader' : (connected ? 'follower' : 'can\'t reach leader') });
+
+    box.replaceChildren(
+      el('div', { class: 'rep-head' }, el('h4', { text: `Replica ${rid}` }), badge),
+      el('div', { class: 'g-wrap' }, svg),
+      el('p', { class: 'hint', text: selected[rid] ? `Now click the vertex the edge from ${selected[rid]} should point to.` : 'Click two vertices to add an edge; click an edge to remove it.' }),
+      ...[form, list, note, repairBtn].filter(Boolean));
+  }
+
+  function clickVertex(rid, v) {
+    if (selected[rid] === null) selected[rid] = v;
+    else if (selected[rid] === v) selected[rid] = null;
+    else { const u = selected[rid]; selected[rid] = null; tryAdd(rid, u, v); return; }
+    render();
+  }
+
+  function renderVerdict() {
+    const out = [];
+    if (!connected) {
+      out.push(`<p class="big">Partitioned.</p>`);
+      if (sameEdges()) out.push('<p>The replicas still hold the same edges.</p>');
+      else {
+        const ids = rid => new Set(live(reps[rid]).map(e => e.id));
+        const only = (a, b) => live(reps[a]).filter(e => !ids(b).has(e.id)).map(e => `${e.u} → ${e.v}`);
+        const gone = (a, b) => live(reps[b]).filter(e => !ids(a).has(e.id) && reps[a].adds.has(e.id)).map(e => `${e.u} → ${e.v}`);
+        const parts = [];
+        for (const [a, b] of [[1, 2], [2, 1]]) {
+          const o = only(a, b), g = gone(a, b);
+          if (o.length) parts.push(`replica ${a} has added ${o.join(', ')}`);
+          if (g.length) parts.push(`replica ${a} has removed ${g.join(', ')}`);
+        }
+        out.push(`<p>The replicas have diverged: ${parts.join('; ')}. Each replica's own graph passed its checks. Heal the partition to merge them.</p>`);
+      }
+    } else {
+      const vw = view(reps[1]), adj = adjOf(vw), cyc = findCycle(adj, vw);
+      const hidden = vw.filter(e => e.hidden);
+      if (cyc) {
+        out.push(`<p class="big bad">Converged, but the graph has a cycle: ${arrow(cyc)}.</p>`);
+        out.push('<p>Both replicas agree on this graph. Every write was accepted and kept, so the invariant gave way. Click Repair on either replica: both would remove the same edge.</p>');
+      } else if (hidden.length) {
+        out.push(`<p class="big ok">Converged, and the visible graph is a DAG.</p>`);
+        const many = hidden.length > 1;
+        out.push(`<p>The cost: ${hidden.map(e => `<code>${e.u} → ${e.v}</code> (written by replica ${e.r}, ${tsText(e)})`).join(', ')} ${many ? 'were' : 'was'} accepted and ${many ? 'are' : 'is'} still stored, but hidden because older edges already lead the other way. Remove a conflicting older edge and ${many ? 'they come' : 'it comes'} back.</p>`);
+      } else {
+        out.push(`<p class="big ok">Converged, and the graph is a DAG.</p>`);
+      }
+      if (!cyc && !hidden.length) {
+        const rej = logItems.filter(l => l.bad && l.rid).length;
+        out.push(rej
+          ? `<p>The cost of keeping it that way: ${rej} write${rej > 1 ? 's were' : ' was'} rejected (see the log).</p>`
+          : '<p>Try one of the scenarios, or cut the network and add conflicting edges on each side.</p>');
+      }
+    }
+    $('verdict').innerHTML = `<h3>What everyone sees</h3>` + out.join('');
+  }
+
+  function render() {
+    for (const b of $('strats').children) b.setAttribute('aria-pressed', String(b.dataset.s === strat));
+    $('strat-desc').innerHTML = STRATS[strat].desc;
+    $('net-status').textContent = connected ? 'Connected' : 'Partitioned';
+    $('net-status').className = 'status ' + (connected ? 'on' : 'off');
+    $('net-btn').textContent = connected ? 'Cut the network' : 'Heal the partition';
+    renderReplica(1);
+    renderReplica(2);
+    renderVerdict();
+    $('log').replaceChildren(...logItems.map(l => el('li', { html: who(l.rid) + l.html })));
+    fresh = new Set();
+  }
+
+  for (const [k, s] of Object.entries(STRATS)) {
+    $('strats').append(el('button', { 'data-s': k, text: s.name, onclick: () => { strat = k; reset(); render(); } }));
+  }
+  $('net-btn').addEventListener('click', () => setNetwork(!connected));
+  $('scen-two').addEventListener('click', () => scenario('two'));
+  $('scen-three').addEventListener('click', () => scenario('three'));
+  $('reset').addEventListener('click', () => { reset(); render(); });
+  reset();
+  render();
+  </script>
+</body>
+</html>
